@@ -1,0 +1,7 @@
+# Never publish client data or local artifacts
+*Palanivel*
+Portfolio Review_*Family*
+*.bak
+~$*
+.DS_Store
+Thumbs.db
