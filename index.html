@@ -1050,6 +1050,49 @@ table.ovx td{min-width:58px;height:30px;text-align:center;font-size:11px;border:
       foot(s,"*Portfolio as on "+model.meta.asOnDate+".");
     })();
 
+    /* ---- 1b. DISTRIBUTOR / CLIENT ASSET ALLOCATION ---- */
+    (function(){
+      function allocSlides(data, levelTitle){
+        if(!data || !data.cols.length) return;
+        var cols=data.cols, ncol=cols.length+2;
+        // TABLE SLIDE
+        var s=base(levelTitle+" \u2014 ASSET ALLOCATION");
+        var hdr=[cell("Asset Class",{bold:true,color:"FFFFFF",fill:{color:C.black},align:"left",fontSize:8})]
+          .concat(cols.map(function(c){return cell(c,{bold:true,color:"FFFFFF",fill:{color:C.black},align:"center",fontSize:7.5});}))
+          .concat([cell("Grand Total",{bold:true,color:"FFFFFF",fill:{color:C.black},align:"center",fontSize:8})]);
+        var trows=[hdr];
+        data.assets.forEach(function(a){
+          var at=0, ar=[cell(a.asset,{bold:true,fill:{color:C.tan},align:"left",fontSize:8})];
+          cols.forEach(function(c){ var v=a.total[c]||0; at+=v; ar.push(cell(v?v.toFixed(2):"",{bold:true,fill:{color:C.tan},align:"right",fontSize:8})); });
+          ar.push(cell(at.toFixed(2),{bold:true,fill:{color:C.tan},align:"right",fontSize:8})); trows.push(ar);
+          a.products.forEach(function(p){
+            var pt=0, pr=[cell("   "+p.product,{align:"left",fontSize:7.5,color:"333333"})];
+            cols.forEach(function(c){ var v=p.vals[c]||0; pt+=v; pr.push(cell(v?v.toFixed(2):"",{align:"right",fontSize:7.5})); });
+            pr.push(cell(pt.toFixed(2),{align:"right",fontSize:7.5})); trows.push(pr);
+          });
+        });
+        var gt=0, gr=[cell("Grand Total",{bold:true,fill:{color:"F3ECE3"},align:"left",fontSize:8})];
+        cols.forEach(function(c){ var v=data.grand[c]||0; gt+=v; gr.push(cell(v.toFixed(2),{bold:true,fill:{color:"F3ECE3"},align:"right",fontSize:8})); });
+        gr.push(cell(gt.toFixed(2),{bold:true,fill:{color:"F3ECE3"},align:"right",fontSize:8})); trows.push(gr);
+        var firstW=2.3, restW=(12.95-firstW)/(ncol-1), colW=[firstW]; for(var k=1;k<ncol;k++) colW.push(restW);
+        var rh=Math.min(0.30, Math.max(0.17, 5.55/trows.length));
+        s.addTable(trows,{x:0.18,y:1.05,w:12.95,colW:colW,rowH:rh,fontFace:F,valign:"middle",border:{type:"solid",color:"FFFFFF",pt:0.5}});
+        foot(s,"*Portfolio as on "+model.meta.asOnDate+". Current Market Value in \u20B9 Crore.");
+        // CHART SLIDE (stacked column)
+        var s2=base(levelTitle+" \u2014 ASSET ALLOCATION CHART");
+        var pal={Equity:"BD9568",Hybrid:"8C6B43",Debt:"DBC8B2",Commodity:"BFBFBF"}, fb=["BD9568","8C6B43","DBC8B2","BFBFBF","D9D9D9","931621"];
+        var chartColors=data.assets.map(function(a,i){ return pal[a.asset]||fb[i%fb.length]; });
+        var series=data.assets.map(function(a){ return {name:a.asset, labels:cols, values:cols.map(function(c){return Math.round((a.total[c]||0)*100)/100;})}; });
+        s2.addChart(pptx.ChartType.bar, series, {x:0.4,y:1.15,w:12.5,h:5.45, barDir:"col", barGrouping:"stacked", chartColors:chartColors,
+          showLegend:true, legendPos:"b", legendFontFace:F, legendFontSize:10, legendColor:C.black,
+          showValue:false, catAxisLabelFontFace:F, catAxisLabelFontSize:9, catAxisLabelRotate:35,
+          valAxisLabelFontFace:F, valAxisLabelFontSize:9, showValAxisTitle:true, valAxisTitle:"CMV (\u20B9 Cr)", valAxisTitleFontFace:F, valAxisTitleFontSize:10});
+        foot(s2,"*Portfolio as on "+model.meta.asOnDate+". Each bar = one "+levelTitle.toLowerCase().replace(" level","")+", stacked by asset class (\u20B9 Cr).");
+      }
+      allocSlides(model.allocByDistributor, "DISTRIBUTOR LEVEL");
+      allocSlides(model.allocByClient, "CLIENT LEVEL");
+    })();
+
     /* ---- 2. AMC ALLOCATION ---- */
     (function(){
       var s = base("AMC Allocation (Across Mutual Fund)");
@@ -1309,6 +1352,21 @@ table.ovx td{min-width:58px;height:30px;text-align:center;font-size:11px;border:
     var am=[["AMC","% of Mutual Fund Book","CMV (Cr.)","Breach (>20%)"]];
     model.amc.rows.forEach(function(r){ am.push([r.amc,r.pct,r.cmv,r.breach?"YES":"No"]); });
     aoa("AMC Allocation",am,{cols:[{wch:26},{wch:22},{wch:12},{wch:14}],fmt:{1:'0.00"%"',2:FMT_CR}});
+
+    /* 3b. Distributor / Client Asset Allocation */
+    function allocAOA(d){
+      var cols=d.cols, rows=[["Asset Class"].concat(cols).concat(["Grand Total"])];
+      d.assets.forEach(function(a){
+        var at=0, r=[a.asset]; cols.forEach(function(c){ var v=a.total[c]||0; at+=v; r.push(Math.round(v*100)/100); }); r.push(Math.round(at*100)/100); rows.push(r);
+        a.products.forEach(function(p){ var pt=0, pr=["   "+p.product]; cols.forEach(function(c){ var v=p.vals[c]||0; pt+=v; pr.push(Math.round(v*100)/100); }); pr.push(Math.round(pt*100)/100); rows.push(pr); });
+      });
+      var gt=0, g=["Grand Total"]; cols.forEach(function(c){ var v=d.grand[c]||0; gt+=v; g.push(Math.round(v*100)/100); }); g.push(Math.round(gt*100)/100); rows.push(g);
+      return rows;
+    }
+    if (model.allocByDistributor && model.allocByDistributor.cols.length){ var dcols=model.allocByDistributor.cols;
+      aoa("Distributor Allocation", allocAOA(model.allocByDistributor), {cols:[{wch:26}].concat(dcols.map(function(){return {wch:15};})).concat([{wch:13}])}); }
+    if (model.allocByClient && model.allocByClient.cols.length){ var ccols=model.allocByClient.cols;
+      aoa("Client Allocation", allocAOA(model.allocByClient), {cols:[{wch:26}].concat(ccols.map(function(){return {wch:15};})).concat([{wch:13}])}); }
 
     /* 4. per-client */
     model.clients.forEach(function(cl){
