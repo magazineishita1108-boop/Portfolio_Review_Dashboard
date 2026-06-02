@@ -2203,4 +2203,21 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     }catch(e){ setStatus('PowerPoint generation failed: '+e.message,true); console.error(e); done(); }
   };
   document.getElementById('dlxls').onclick=function(){
-    if(!model)return; var btn=this; btn.disabled=true; var old=btn.textC
+    if(!model)return; var btn=this; btn.disabled=true; var old=btn.textContent; btn.textContent='Generating…';
+    try{ var fn='Portfolio Review_'+model.meta.familyName+'_'+model.meta.asOnDate+'.xlsx';
+      var wb=E.buildXLSX(model,XLSX); XLSX.writeFile(wb,fn); setStatus('Excel downloaded: <b>'+fn+'</b>');
+    }catch(e){ setStatus('Excel generation failed: '+e.message,true); console.error(e); }
+    btn.disabled=false; btn.textContent=old;
+  };
+})();
+</script>
+<script>(function(){
+function setLogo(d,which){ BRAND_LOGO=d; var p=document.getElementById("logoPrev"); if(p)p.src=d; var bi=document.getElementById("logoInv"),bo=document.getElementById("logoOne"); if(bi&&bo){ bi.style.background=which==="inv"?"#BD9568":"#fff"; bi.style.color=which==="inv"?"#fff":"#000"; bo.style.background=which==="one"?"#BD9568":"#fff"; bo.style.color=which==="one"?"#fff":"#000"; } }
+var bi=document.getElementById("logoInv"); if(bi) bi.onclick=function(){ setLogo(BRAND_LOGOS.invictus,"inv"); };
+var bo=document.getElementById("logoOne"); if(bo) bo.onclick=function(){ setLogo(BRAND_LOGOS.onedigital,"one"); };
+var lu=document.getElementById("logoUp"); if(lu) lu.onchange=function(e){ var f=e.target.files[0]; if(!f)return; var r=new FileReader(); r.onload=function(){ setLogo(r.result,"custom"); }; r.readAsDataURL(f); };
+var pv=document.getElementById("logoPrev"); if(pv) pv.src=BRAND_LOGO;
+var mu=document.getElementById("up-mkt"); if(mu) mu.onchange=function(e){ var fs=Array.prototype.slice.call(e.target.files); if(!fs.length)return; var out=[],done=0; fs.forEach(function(f,ix){ var r=new FileReader(); r.onload=function(){ out[ix]=r.result; if(++done===fs.length){ MARKET_UPDATE_IMAGES=out.filter(Boolean); var st=document.getElementById("rs-mkt"); if(st)st.textContent="Uploaded ("+MARKET_UPDATE_IMAGES.length+")"; } }; r.readAsDataURL(f); }); };
+})();</script>
+</body>
+</html>
