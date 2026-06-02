@@ -258,6 +258,16 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
   function ws(s){ return String(s==null?"":s).replace(/\s+/g," ").trim(); }
   function pct2(x){ return (x==null||isNaN(x)) ? "—" : (Math.round(x*100)/100).toFixed(2)+"%"; }
   function cr2(x){ return (x==null||isNaN(x)) ? "—" : (Math.round(x*100)/100).toFixed(2); }
+  /* ---------- display-unit engine (mirror the unit the base file uses) ---------- */
+  var _unitHint = 'Cr';
+  function mkUnit(u){
+    var L=(u==='L');
+    var o={ code:(L?'L':'Cr'), scale:(L?100:1), lab:(L?'Lakhs':'Cr.'), sfx:(L?'L':'Cr'), cap:(L?'₹ Lakh':'₹ Crore') };
+    o.v=function(cr){ return (cr==null||isNaN(cr))?null:cr*this.scale; };
+    o.t=function(cr){ var x=this.v(cr); return x==null?'—':(Math.round(x*100)/100).toFixed(2); };
+    o.m=function(cr){ var x=this.v(cr); if(x==null) return '—'; var r=Math.round(x*100)/100; return (r<0?'-₹':'₹')+Math.abs(r).toFixed(2)+' '+this.sfx; };
+    return o;
+  }
 
   /* ---------- fuzzy matcher (≥3 shared tokens, AMC guard, ratio tie-break) ---------- */
   var JUNK = {reg:1,regular:1,direct:1,growth:1,g:1,idcw:1,payout:1,reinvestment:1,reinvest:1,
@@ -395,9 +405,12 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       product:find(function(h){return h.indexOf("product")>=0;}),
       dist:   find(function(h){return h.indexOf("distributor")>=0;}),
       units:  find(function(h){return h==="units";}),
-      invR:   find(function(h){return h.indexOf("invested")>=0 && h.indexOf("cr")<0;}),
-      mvR:    find(function(h){return h.indexOf("market value")>=0 && h.indexOf("cr")<0;}),
-      glR:    find(function(h){return h.indexOf("gain")>=0 && h.indexOf("cr")<0;}),
+      invR:   find(function(h){return h.indexOf("invested")>=0 && h.indexOf("cr")<0 && h.indexOf("lakh")<0 && h.indexOf("lac")<0;}),
+      mvR:    find(function(h){return h.indexOf("market value")>=0 && h.indexOf("cr")<0 && h.indexOf("lakh")<0 && h.indexOf("lac")<0;}),
+      glR:    find(function(h){return h.indexOf("gain")>=0 && h.indexOf("cr")<0 && h.indexOf("lakh")<0 && h.indexOf("lac")<0;}),
+      invLk:  find(function(h){return h.indexOf("invested")>=0 && (h.indexOf("lakh")>=0||h.indexOf("lac")>=0);}),
+      mvLk:   find(function(h){return h.indexOf("market value")>=0 && (h.indexOf("lakh")>=0||h.indexOf("lac")>=0);}),
+      glLk:   find(function(h){return h.indexOf("gain")>=0 && (h.indexOf("lakh")>=0||h.indexOf("lac")>=0);}),
       invCr:  find(function(h){return h.indexOf("invested")>=0 && h.indexOf("cr")>=0;}),
       cmvCr:  find(function(h){return h.indexOf("market value")>=0 && h.indexOf("cr")>=0;}),
       glCr:   find(function(h){return h.indexOf("gain")>=0 && h.indexOf("cr")>=0;}),
@@ -408,12 +421,17 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     };
     function gv(r,c){ return (c>=0 && r[c]!=null) ? r[c] : null; }
     function gn(r,c){ var v=gv(r,c); if(v==null||v==="") return null; var f=parseFloat(String(v).replace(/,/g,"")); return isNaN(f)?null:f; }
+    // canonical Crore from whatever scale the file uses: Cr -> as-is, Lakhs -> /100, Rupees -> /1e7
+    function pickCr(r,cC,lC,rC){ var v=gn(r,cC); if(v!=null) return v; v=gn(r,lC); if(v!=null) return v/100; v=gn(r,rC); if(v!=null) return v/1e7; return null; }
     var rows=[];
     for (var ri=hi+1; ri<aoa.length; ri++){
       var r=aoa[ri]; if(!r) continue;
       var nm = ws(gv(r,col.name)); if(!nm) continue;
-      var cmv = gn(r,col.cmvCr);
-      if (cmv==null) continue; // skip totals/blank rows w/o CMV
+      var cmv = pickCr(r,col.cmvCr,col.mvLk,col.mvR);
+      if (cmv==null) continue; // skip totals/blank rows w/o CMV (in ANY unit)
+      var _inv = pickCr(r,col.invCr,col.invLk,col.invR);
+      var _gl  = pickCr(r,col.glCr,col.glLk,col.glR);
+      var _invR=gn(r,col.invR), _mvR=gn(r,col.mvR), _glR=gn(r,col.glR);
       rows.push({
         client: ws(gv(r,col.client)),
         name: nm,
@@ -424,16 +442,22 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
         product: ws(gv(r,col.product))||"Mutual Funds",
         distributor: ws(gv(r,col.dist)),
         units: gn(r,col.units),
-        invR: gn(r,col.invR), mvR: gn(r,col.mvR), glR: gn(r,col.glR),
-        invCr: gn(r,col.invCr)||0,
+        invR: (_invR!=null?_invR:(_inv!=null?_inv*1e7:null)),
+        mvR:  (_mvR!=null?_mvR:(cmv!=null?cmv*1e7:null)),
+        glR:  (_glR!=null?_glR:(_gl!=null?_gl*1e7:null)),
+        invCr: _inv||0,
         cmvCr: cmv,
-        glCr: gn(r,col.glCr),
+        glCr: _gl,
         allocFrac: gn(r,col.alloc),       // fraction
         xirrFrac: gn(r,col.xirr),         // fraction
         bmxirrFrac: gn(r,col.bmxirr),     // fraction
         days: gn(r,col.days)
       });
     }
+    var _hasCr=(col.invCr>=0||col.cmvCr>=0||col.glCr>=0);
+    var _hasLk=(col.invLk>=0||col.mvLk>=0||col.glLk>=0);
+    _unitHint = _hasCr?'Cr':(_hasLk?'L':'auto');   // display unit = the unit the base file is written in
+    rows.unitHint = _unitHint;
     return rows;
   }
 
@@ -933,9 +957,12 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     }
     var allocByDistributor=allocBreakdown(function(h){return h.distributor;});
     var allocByClient=allocBreakdown(function(h){return h.client;});
+    var _uh = (opts && opts.unitHint) || (rows && rows.unitHint) || _unitHint || 'Cr';
+    if (_uh==='auto') _uh = (totalCMV>=1) ? 'Cr' : 'L';   // raw-rupee-only files: pick by portfolio size
+    var unit = mkUnit(_uh);
     return {
       meta:{familyName:familyName, asOnDate:asOn, dataDates:DD},
-      totalCMV:totalCMV, totalInv:totalInv, totalGL: totalCMV-totalInv,
+      unit:unit, totalCMV:totalCMV, totalInv:totalInv, totalGL: totalCMV-totalInv,
       holdings:rows, unmatched:unmatched,
       allocByDistributor:allocByDistributor, allocByClient:allocByClient,
       irr:irrTree, irrActive:!!IRRO, irrAsOn:irrAsOn,
@@ -1062,13 +1089,13 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     (function(){
       var s = base("Asset Allocation");
       var kx=0.18, kw=2.14, kg=0.12;
-      kpi(s,kx,1.06,kw,"\u20B9"+model.totalCMV.toFixed(2)+" Cr","Current Market Value");
-      kpi(s,kx+(kw+kg),1.06,kw,"\u20B9"+model.totalInv.toFixed(2)+" Cr","Invested Value");
-      kpi(s,kx+2*(kw+kg),1.06,kw,(model.totalGL<0?"-\u20B9":"\u20B9")+Math.abs(model.totalGL).toFixed(2)+" Cr","Total Gain / Loss");
+      kpi(s,kx,1.06,kw,model.unit.m(model.totalCMV),"Current Market Value");
+      kpi(s,kx+(kw+kg),1.06,kw,model.unit.m(model.totalInv),"Invested Value");
+      kpi(s,kx+2*(kw+kg),1.06,kw,model.unit.m(model.totalGL),"Total Gain / Loss");
       sectionLabel(s,"Allocation by Asset Class & Product",0.18,1.98,6.6);
       var head=[cell("Asset Class",{bold:true,color:"FFFFFF",fill:{color:C.black},align:"center"}),
-                cell("Investment Amount (Cr.)",{bold:true,color:"FFFFFF",fill:{color:C.black},align:"center"}),
-                cell("Current Market Value (Cr.)",{bold:true,color:"FFFFFF",fill:{color:C.black},align:"center"}),
+                cell("Investment Amount ("+model.unit.lab+")",{bold:true,color:"FFFFFF",fill:{color:C.black},align:"center"}),
+                cell("Current Market Value ("+model.unit.lab+")",{bold:true,color:"FFFFFF",fill:{color:C.black},align:"center"}),
                 cell("% CMV",{bold:true,color:"FFFFFF",fill:{color:C.black},align:"center"})];
       var trows=[head];
       model.assetAllocation.rows.forEach(function(r){
@@ -1076,8 +1103,8 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
         var col2 = r.level==="grand"?"FFFFFF":C.black;
         var bold = (r.level!=="product");
         trows.push([cell(r.label,{bold:bold,color:col2,fill:{color:fill},align:"center"}),
-          cell(cr2(r.inv),{align:"center",color:col2,fill:{color:fill},bold:bold}),
-          cell(cr2(r.cmv),{align:"center",color:col2,fill:{color:fill},bold:bold}),
+          cell(model.unit.t(r.inv),{align:"center",color:col2,fill:{color:fill},bold:bold}),
+          cell(model.unit.t(r.cmv),{align:"center",color:col2,fill:{color:fill},bold:bold}),
           cell(r.pct.toFixed(2)+"%",{align:"center",color:col2,fill:{color:fill},bold:bold})]);
       });
       s.addTable(trows,{x:0.18,y:2.34,w:6.6,colW:[2.5,1.45,1.65,1.0],rowH:0.32,fontFace:F,fontSize:9,valign:"middle",border:{type:"solid",color:C.greyL,pt:1}});
@@ -1107,21 +1134,21 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
         var trows=[hdr];
         data.assets.forEach(function(a){
           var at=0, ar=[cell(a.asset,{bold:true,fill:{color:C.greyL},align:"left",fontSize:8})];
-          cols.forEach(function(c){ var v=a.total[c]||0; at+=v; ar.push(cell(v?v.toFixed(2):"",{bold:true,fill:{color:C.greyL},align:"right",fontSize:8})); });
-          ar.push(cell(at.toFixed(2),{bold:true,fill:{color:C.greyL},align:"right",fontSize:8})); trows.push(ar);
+          cols.forEach(function(c){ var v=a.total[c]||0; at+=v; ar.push(cell(v?model.unit.t(v):"",{bold:true,fill:{color:C.greyL},align:"right",fontSize:8})); });
+          ar.push(cell(model.unit.t(at),{bold:true,fill:{color:C.greyL},align:"right",fontSize:8})); trows.push(ar);
           a.products.forEach(function(p){
             var pt=0, pr=[cell("   "+p.product,{align:"left",fontSize:7.5,color:"333333"})];
-            cols.forEach(function(c){ var v=p.vals[c]||0; pt+=v; pr.push(cell(v?v.toFixed(2):"",{align:"right",fontSize:7.5})); });
-            pr.push(cell(pt.toFixed(2),{align:"right",fontSize:7.5})); trows.push(pr);
+            cols.forEach(function(c){ var v=p.vals[c]||0; pt+=v; pr.push(cell(v?model.unit.t(v):"",{align:"right",fontSize:7.5})); });
+            pr.push(cell(model.unit.t(pt),{align:"right",fontSize:7.5})); trows.push(pr);
           });
         });
         var gt=0, gr=[cell("Grand Total",{bold:true,color:"FFFFFF",fill:{color:C.black},align:"left",fontSize:8})];
-        cols.forEach(function(c){ var v=data.grand[c]||0; gt+=v; gr.push(cell(v.toFixed(2),{bold:true,color:"FFFFFF",fill:{color:C.black},align:"right",fontSize:8})); });
-        gr.push(cell(gt.toFixed(2),{bold:true,color:"FFFFFF",fill:{color:C.black},align:"right",fontSize:8})); trows.push(gr);
+        cols.forEach(function(c){ var v=data.grand[c]||0; gt+=v; gr.push(cell(model.unit.t(v),{bold:true,color:"FFFFFF",fill:{color:C.black},align:"right",fontSize:8})); });
+        gr.push(cell(model.unit.t(gt),{bold:true,color:"FFFFFF",fill:{color:C.black},align:"right",fontSize:8})); trows.push(gr);
         var firstW=2.3, restW=(12.95-firstW)/(ncol-1), colW=[firstW]; for(var k=1;k<ncol;k++) colW.push(restW);
         var rh=Math.min(0.30, Math.max(0.17, 5.55/trows.length));
         s.addTable(trows,{x:0.18,y:1.05,w:12.95,colW:colW,rowH:rh,fontFace:F,valign:"middle",border:{type:"solid",color:"FFFFFF",pt:0.5}});
-        foot(s,"*Portfolio as on "+model.meta.asOnDate+". Current Market Value in \u20B9 Crore.");
+        foot(s,"*Portfolio as on "+model.meta.asOnDate+". Current Market Value in "+model.unit.cap+".");
         // CHART SLIDE (stacked column)
         var s2=base("ASSET ALLOCATION \u2013 "+levelTitle);
         var pal={Equity:"DBC8B2",Hybrid:"BFBFBF",Debt:"BD9568",Commodity:"808080"}, fb=["DBC8B2","BFBFBF","BD9568","808080","D9D9D9","BD9568"];
@@ -1156,9 +1183,9 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     model.clients.forEach(function(cl){
       var hh={bold:true,color:"FFFFFF",fill:{color:C.black},align:"right",fontSize:8};
       var head=[cell("Instrument Name",{bold:true,color:"FFFFFF",fill:{color:C.black},fontSize:8}),
-        cell("Invested Value (Cr)",hh),
-        cell("Current Market Value (Cr)",hh),
-        cell("Total Gain/Loss (Cr)",hh),
+        cell("Invested Value ("+model.unit.lab+")",hh),
+        cell("Current Market Value ("+model.unit.lab+")",hh),
+        cell("Total Gain/Loss ("+model.unit.lab+")",hh),
         cell("Allocation %",hh),
         cell("XIRR %",hh),
         cell("BMXIRR %",hh)];
@@ -1167,7 +1194,7 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
         var fg = r.level==="grand"?"FFFFFF":C.black;
         var bold = r.level!=="item";
         var lbl = (r.level==="item"?"   ":"")+r.label;
-        function mc(v){ var t=num(v)?"—":(Math.round(v*100)/100).toFixed(2); return cell(t,{align:"right",fill:{color:fill},color: (!num(v)&&v<0)?C.red:fg, bold:bold}); }
+        function mc(v){ var t=model.unit.t(v); return cell(t,{align:"right",fill:{color:fill},color: (!num(v)&&v<0)?C.red:fg, bold:bold}); }
         function pc(v){ var t=num(v)?"—":(Math.round(v*100)/100).toFixed(2)+"%"; return cell(t,{align:"right",fill:{color:fill},color:fg,bold:bold}); }
         return [cell(lbl,{fill:{color:fill},color:fg,bold:bold}),mc(r.inv),mc(r.cmv),mc(r.gl),pc(r.alloc),pc(r.xirr),pc(r.bmxirr)];
       }
@@ -1183,7 +1210,7 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
         s.addTable(chunk,{x:0.18,y:1.12,w:12.97,colW:[4.27,1.5,1.95,1.7,1.15,1.2,1.2],
           rowH:0.34,fontFace:F,fontSize:8.5,valign:"middle",border:{type:"solid",color:"D9D9D9",pt:0.5}});
         if (gl) insight(s, gl, 0.18, 6.18, 12.97, 0.5);
-        foot(s,"*Allocation re-based to "+cl.name+"'s portfolio (CMV ₹"+cl.totalCMV.toFixed(2)+" Cr). "+(model.irrActive?("XIRR/BMXIRR transaction-based (as on "+model.irrAsOn+")."):"XIRR/BMXIRR are CMV-weighted.")+" Portfolio as on "+model.meta.asOnDate+".");
+        foot(s,"*Allocation re-based to "+cl.name+"'s portfolio (CMV "+model.unit.m(cl.totalCMV)+"). "+(model.irrActive?("XIRR/BMXIRR transaction-based (as on "+model.irrAsOn+")."):"XIRR/BMXIRR are CMV-weighted.")+" Portfolio as on "+model.meta.asOnDate+".");
       }
     });
 
@@ -1347,34 +1374,35 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     }
 
     /* 1. Base File */
-    var bf=[["Client Name","Instrument Name","Category Name","Asset Name","Folio No","AMC","Product Name","Distributor Name","Units","Invested Value (₹)","Market Value (₹)","Total Gain/Loss (₹)","Invested Value (Cr.)","Current Market Value (Cr.)","Total Gain/Loss (Cr.)","Allocation (%)","XIRR (%)","BMXIRR (%)","Avg. Holding Days"]];
+    var bf=[["Client Name","Instrument Name","Category Name","Asset Name","Folio No","AMC","Product Name","Distributor Name","Units","Invested Value (₹)","Market Value (₹)","Total Gain/Loss (₹)","Invested Value ("+model.unit.lab+")","Current Market Value ("+model.unit.lab+")","Total Gain/Loss ("+model.unit.lab+")","Allocation (%)","XIRR (%)","BMXIRR (%)","Avg. Holding Days"]];
     model.holdings.forEach(function(h){
-      bf.push([h.client,h.name,h.category,h.asset,h.folio,h.amcDisplay,h.product,h.distributor,h.units,h.invR,h.mvR,h.glR,h.invCr,h.cmvCr,h.glCr,
+      bf.push([h.client,h.name,h.category,h.asset,h.folio,h.amcDisplay,h.product,h.distributor,h.units,h.invR,h.mvR,h.glR,model.unit.v(h.invCr),model.unit.v(h.cmvCr),model.unit.v(h.glCr),
         (h.allocFrac!=null?h.allocFrac*100:null),(h.xirrFrac!=null?h.xirrFrac*100:null),(h.bmxirrFrac!=null?h.bmxirrFrac*100:null),h.days]);
     });
     aoa("Base File",bf,{cols:[{wch:18},{wch:42},{wch:18},{wch:10},{wch:14},{wch:18},{wch:13},{wch:18},{wch:12},{wch:14},{wch:14},{wch:14},{wch:14},{wch:18},{wch:16},{wch:12},{wch:10},{wch:10},{wch:12}],
       fmt:{12:FMT_CR,13:FMT_CR,14:FMT_CR,15:'0.00',16:'0.00',17:'0.00'}});
 
     /* 2. Asset Allocation */
-    var aa=[["Asset Class","Investment Amount (Cr.)","Current Market Value (Cr.)","% CMV"]];
-    model.assetAllocation.rows.forEach(function(r){ aa.push([(r.level==="product"?"   ":"")+r.label,r.inv,r.cmv,r.pct]); });
+    var aa=[["Asset Class","Investment Amount ("+model.unit.lab+")","Current Market Value ("+model.unit.lab+")","% CMV"]];
+    model.assetAllocation.rows.forEach(function(r){ aa.push([(r.level==="product"?"   ":"")+r.label,model.unit.v(r.inv),model.unit.v(r.cmv),r.pct]); });
     aa.push([]); aa.push(["Liquidity / Structure",""]);
     model.liqPie.forEach(function(l){ aa.push([l.name,l.value]); });
     aoa("Asset Allocation",aa,{cols:[{wch:26},{wch:24},{wch:26},{wch:12}],fmt:{1:FMT_CR,2:FMT_CR,3:'0.00"%"'}});
 
     /* 3. AMC Allocation */
-    var am=[["AMC","% of Mutual Fund Book","CMV (Cr.)","Breach (>20%)"]];
-    model.amc.rows.forEach(function(r){ am.push([r.amc,r.pct,r.cmv,r.breach?"YES":"No"]); });
+    var am=[["AMC","% of Mutual Fund Book","CMV ("+model.unit.lab+")","Breach (>20%)"]];
+    model.amc.rows.forEach(function(r){ am.push([r.amc,r.pct,model.unit.v(r.cmv),r.breach?"YES":"No"]); });
     aoa("AMC Allocation",am,{cols:[{wch:26},{wch:22},{wch:12},{wch:14}],fmt:{1:'0.00"%"',2:FMT_CR}});
 
     /* 3b. Distributor / Client Asset Allocation */
     function allocAOA(d){
-      var cols=d.cols, rows=[["Asset Class"].concat(cols).concat(["Grand Total"])];
+      var US=model.unit.scale;
+      var cols=d.cols, rows=[["Asset Class ("+model.unit.lab+")"].concat(cols).concat(["Grand Total"])];
       d.assets.forEach(function(a){
-        var at=0, r=[a.asset]; cols.forEach(function(c){ var v=a.total[c]||0; at+=v; r.push(Math.round(v*100)/100); }); r.push(Math.round(at*100)/100); rows.push(r);
-        a.products.forEach(function(p){ var pt=0, pr=["   "+p.product]; cols.forEach(function(c){ var v=p.vals[c]||0; pt+=v; pr.push(Math.round(v*100)/100); }); pr.push(Math.round(pt*100)/100); rows.push(pr); });
+        var at=0, r=[a.asset]; cols.forEach(function(c){ var v=a.total[c]||0; at+=v; r.push(Math.round(v*US*100)/100); }); r.push(Math.round(at*US*100)/100); rows.push(r);
+        a.products.forEach(function(p){ var pt=0, pr=["   "+p.product]; cols.forEach(function(c){ var v=p.vals[c]||0; pt+=v; pr.push(Math.round(v*US*100)/100); }); pr.push(Math.round(pt*US*100)/100); rows.push(pr); });
       });
-      var gt=0, g=["Grand Total"]; cols.forEach(function(c){ var v=d.grand[c]||0; gt+=v; g.push(Math.round(v*100)/100); }); g.push(Math.round(gt*100)/100); rows.push(g);
+      var gt=0, g=["Grand Total"]; cols.forEach(function(c){ var v=d.grand[c]||0; gt+=v; g.push(Math.round(v*US*100)/100); }); g.push(Math.round(gt*US*100)/100); rows.push(g);
       return rows;
     }
     if (model.allocByDistributor && model.allocByDistributor.cols.length){ var dcols=model.allocByDistributor.cols;
@@ -1384,8 +1412,8 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
 
     /* 4. per-client */
     model.clients.forEach(function(cl){
-      var ch=[["Instrument Name","Invested Value (Cr)","Current Market Value (Cr)","Total Gain/Loss (Cr)","Allocation (%)","XIRR (%)","BMXIRR (%)"]];
-      cl.rows.forEach(function(r){ ch.push([(r.level==="item"?"   ":"")+r.label,r.inv,r.cmv,r.gl,r.alloc,r.xirr,r.bmxirr]); });
+      var ch=[["Instrument Name","Invested Value ("+model.unit.lab+")","Current Market Value ("+model.unit.lab+")","Total Gain/Loss ("+model.unit.lab+")","Allocation (%)","XIRR (%)","BMXIRR (%)"]];
+      cl.rows.forEach(function(r){ ch.push([(r.level==="item"?"   ":"")+r.label,model.unit.v(r.inv),model.unit.v(r.cmv),model.unit.v(r.gl),r.alloc,r.xirr,r.bmxirr]); });
       aoa(cl.name,ch,{cols:[{wch:46},{wch:18},{wch:24},{wch:20},{wch:14},{wch:12},{wch:12}],fmt:{1:FMT_CR,2:FMT_CR,3:FMT_CR,4:'0.00"%"',5:'0.00"%"',6:'0.00"%"'}});
     });
 
@@ -1771,7 +1799,7 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     model=E.computeReview(currentRows,activeRef,{familyName:currentFamily,asOnDate:currentDate});
     renderAll();
     var unm=model.unmatched.length;
-    setStatus('Loaded <b>'+currentRows.length+'</b> holdings · '+model.clients.length+' client(s) · CMV <b>₹'+model.totalCMV.toFixed(2)+' Cr</b>.'+
+    setStatus('Loaded <b>'+currentRows.length+'</b> holdings · '+model.clients.length+' client(s) · CMV <b>'+model.unit.m(model.totalCMV)+'</b>.'+
       (unm? ' <span style="color:#931621">'+unm+' holding(s) could not be matched to reference data: '+model.unmatched.join('; ')+'</span>':' All holdings matched to reference data.'),unm>0);
     document.getElementById('toolbar').style.display='flex';
     document.getElementById('tabs').style.display='flex';
@@ -1873,16 +1901,16 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     var s=document.getElementById('s-asset'); var m=model;
     var rows=m.assetAllocation.rows.map(function(r){
       var cls=r.level==='asset'?'lvl-asset':(r.level==='product'?'lvl-product':(r.level==='grand'?'lvl-grand':'lvl-item'));
-      return '<tr class="'+cls+'"><td>'+r.label+'</td><td>'+ce(r.inv)+'</td><td>'+ce(r.cmv)+'</td><td>'+r.pct.toFixed(2)+'%</td></tr>';
+      return '<tr class="'+cls+'"><td>'+r.label+'</td><td>'+m.unit.t(r.inv)+'</td><td>'+m.unit.t(r.cmv)+'</td><td>'+r.pct.toFixed(2)+'%</td></tr>';
     }).join('');
     s.innerHTML='<div class="card"><div class="kpis">'+
-      '<div class="kpi"><div class="v">₹'+m.totalCMV.toFixed(2)+' Cr</div><div class="l">Current Market Value</div></div>'+
-      '<div class="kpi"><div class="v">₹'+m.totalInv.toFixed(2)+' Cr</div><div class="l">Invested</div></div>'+
-      '<div class="kpi"><div class="v"'+neg(m.totalGL)+'>₹'+m.totalGL.toFixed(2)+' Cr</div><div class="l">Total Gain/Loss</div></div>'+
+      '<div class="kpi"><div class="v">'+m.unit.m(m.totalCMV)+'</div><div class="l">Current Market Value</div></div>'+
+      '<div class="kpi"><div class="v">'+m.unit.m(m.totalInv)+'</div><div class="l">Invested</div></div>'+
+      '<div class="kpi"><div class="v"'+neg(m.totalGL)+'>'+m.unit.m(m.totalGL)+'</div><div class="l">Total Gain/Loss</div></div>'+
       '<div class="kpi"><div class="v">'+m.holdings.length+'</div><div class="l">Holdings</div></div>'+
       '<div class="kpi"><div class="v">'+m.clients.length+'</div><div class="l">Clients</div></div></div></div>'+
       '<div class="card"><h3>Asset Allocation</h3><div class="sub">*Portfolio as on '+m.meta.asOnDate+'</div>'+
-      '<div class="flex"><div class="col"><table class="cz aa"><tr><th>Asset Class</th><th>Investment Amount (Cr.)</th><th>Current Market Value (Cr.)</th><th>% CMV</th></tr>'+rows+'</table></div>'+
+      '<div class="flex"><div class="col"><table class="cz aa"><tr><th>Asset Class</th><th>Investment Amount ('+m.unit.lab+')</th><th>Current Market Value ('+m.unit.lab+')</th><th>% CMV</th></tr>'+rows+'</table></div>'+
       '<div class="col"><div class="piewrap"><div class="pc"><h4>By Asset Class</h4><div class="chartbox"><canvas id="pieAsset"></canvas></div></div>'+
       '<div class="pc"><h4>Liquidity / Structure</h4><div class="chartbox"><canvas id="pieLiq"></canvas></div></div></div></div></div></div>';
     var pal=['#DBC8B2','#BFBFBF','#BD9568','#808080','#8C6B43'];
@@ -1923,10 +1951,10 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     model.clients.forEach(function(cl){
       var rows=cl.rows.map(function(r){
         var cls=r.level==='asset'?'lvl-asset':(r.level==='product'?'lvl-product':(r.level==='grand'?'lvl-grand':'lvl-item'));
-        return '<tr class="'+cls+'"><td>'+r.label+'</td><td'+neg(r.inv)+'>'+ce(r.inv)+'</td><td'+neg(r.cmv)+'>'+ce(r.cmv)+'</td><td'+neg(r.gl)+'>'+ce(r.gl)+'</td><td>'+pe(r.alloc)+'</td><td>'+pe(r.xirr)+'</td><td>'+pe(r.bmxirr)+'</td></tr>';
+        return '<tr class="'+cls+'"><td>'+r.label+'</td><td'+neg(r.inv)+'>'+model.unit.t(r.inv)+'</td><td'+neg(r.cmv)+'>'+model.unit.t(r.cmv)+'</td><td'+neg(r.gl)+'>'+model.unit.t(r.gl)+'</td><td>'+pe(r.alloc)+'</td><td>'+pe(r.xirr)+'</td><td>'+pe(r.bmxirr)+'</td></tr>';
       }).join('');
-      html+='<div class="card"><h3>Portfolio Holdings — '+cl.name+'</h3><div class="sub">Allocation re-based to this client (CMV ₹'+cl.totalCMV.toFixed(2)+' Cr). '+(model.irrActive?('XIRR/BMXIRR transaction-based (as on '+model.irrAsOn+').'):'XIRR/BMXIRR CMV-weighted.')+'</div>'+
-        '<table class="cz"><tr><th>Instrument Name</th><th>Invested Value (Cr)</th><th>Current Market Value (Cr)</th><th>Total Gain/Loss (Cr)</th><th>Allocation %</th><th>XIRR %</th><th>BMXIRR %</th></tr>'+rows+'</table></div>';
+      html+='<div class="card"><h3>Portfolio Holdings — '+cl.name+'</h3><div class="sub">Allocation re-based to this client (CMV '+model.unit.m(cl.totalCMV)+'). '+(model.irrActive?('XIRR/BMXIRR transaction-based (as on '+model.irrAsOn+').'):'XIRR/BMXIRR CMV-weighted.')+'</div>'+
+        '<table class="cz"><tr><th>Instrument Name</th><th>Invested Value ('+model.unit.lab+')</th><th>Current Market Value ('+model.unit.lab+')</th><th>Total Gain/Loss ('+model.unit.lab+')</th><th>Allocation %</th><th>XIRR %</th><th>BMXIRR %</th></tr>'+rows+'</table></div>';
     });
     document.getElementById('s-holdings').innerHTML=html;
   }
@@ -2140,25 +2168,25 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
             y:{stacked:true,ticks:{font:{family:'Cambria'}},title:{display:true,text:'CMV (₹ Cr)',font:{family:'Cambria'}}}},
     plugins:{legend:{position:'bottom',labels:{font:{family:'Cambria'}}}, datalabels:{display:'auto',color:function(ctx){var h=String(ctx.dataset.backgroundColor||'#000').replace('#','');var r=parseInt(h.substr(0,2),16)||0,g=parseInt(h.substr(2,2),16)||0,b=parseInt(h.substr(4,2),16)||0;return (0.299*r+0.587*g+0.114*b)>140?'#000':'#fff';},font:{family:'Cambria',weight:'bold',size:9},formatter:function(v,ctx){var di=ctx.dataIndex,tot=0;ctx.chart.data.datasets.forEach(function(ds){tot+=(+ds.data[di]||0);});if(!tot||v<=0)return '';var p=v/tot*100;return p>=3?p.toFixed(1)+'%':'';}},
       tooltip:{callbacks:{label:function(c){var di=c.dataIndex,tot=0;c.chart.data.datasets.forEach(function(ds){tot+=(+ds.data[di]||0);});var p=tot?(c.parsed.y/tot*100):0;return c.dataset.label+': ₹'+(c.parsed.y||0).toFixed(2)+' Cr ('+p.toFixed(1)+'%)';}}}}}; }
-  function barStacked100Opts(){ return {responsive:true,maintainAspectRatio:false,layout:{padding:6},scales:{x:{stacked:true,ticks:{font:{family:'Cambria',size:10},maxRotation:40,minRotation:0,autoSkip:false}},y:{stacked:true,min:0,max:100,ticks:{font:{family:'Cambria'},callback:function(v){return v+'%';}},title:{display:true,text:'% of CMV',font:{family:'Cambria'}}}},plugins:{legend:{position:'bottom',labels:{font:{family:'Cambria'}}},datalabels:{display:'auto',color:function(ctx){var hh=String(ctx.dataset.backgroundColor||'#000').replace('#','');var r=parseInt(hh.substr(0,2),16)||0,g=parseInt(hh.substr(2,2),16)||0,b=parseInt(hh.substr(4,2),16)||0;return (0.299*r+0.587*g+0.114*b)>140?'#000':'#fff';},font:{family:'Cambria',weight:'bold',size:9},formatter:function(v,ctx){return v>=3?(+v).toFixed(1)+'%':'';}},tooltip:{callbacks:{label:function(c){var ds=c.dataset;var raw=(ds._raw&&ds._raw[c.dataIndex]!=null)?ds._raw[c.dataIndex]:null;var p=(c.parsed.y||0);return ds.label+': '+(raw!=null?('₹'+(+raw).toFixed(2)+' Cr '):'')+'('+p.toFixed(1)+'%)';}}}}}; }
+  function barStacked100Opts(){ return {responsive:true,maintainAspectRatio:false,layout:{padding:6},scales:{x:{stacked:true,ticks:{font:{family:'Cambria',size:10},maxRotation:40,minRotation:0,autoSkip:false}},y:{stacked:true,min:0,max:100,ticks:{font:{family:'Cambria'},callback:function(v){return v+'%';}},title:{display:true,text:'% of CMV',font:{family:'Cambria'}}}},plugins:{legend:{position:'bottom',labels:{font:{family:'Cambria'}}},datalabels:{display:'auto',color:function(ctx){var hh=String(ctx.dataset.backgroundColor||'#000').replace('#','');var r=parseInt(hh.substr(0,2),16)||0,g=parseInt(hh.substr(2,2),16)||0,b=parseInt(hh.substr(4,2),16)||0;return (0.299*r+0.587*g+0.114*b)>140?'#000':'#fff';},font:{family:'Cambria',weight:'bold',size:9},formatter:function(v,ctx){return v>=3?(+v).toFixed(1)+'%':'';}},tooltip:{callbacks:{label:function(c){var ds=c.dataset;var raw=(ds._raw&&ds._raw[c.dataIndex]!=null)?ds._raw[c.dataIndex]:null;var p=(c.parsed.y||0);return ds.label+': '+(raw!=null?((typeof model!=='undefined'&&model.unit?model.unit.m(raw):('₹'+(+raw).toFixed(2)+' Cr'))+' '):'')+'('+p.toFixed(1)+'%)';}}}}}; }
   function renderAlloc(surfId, data, title, canvasId){
     var s=document.getElementById(surfId); if(!s) return;
     if(!data || !data.cols.length){ s.innerHTML='<div class="card"><div class="empty">No allocation data available.</div></div>'; return; }
     var cols=data.cols;
-    function fmt(v){ v=v||0; return v?v.toFixed(2):'<span style="color:#cfc9c0">0.00</span>'; }
+    function fmt(v){ v=v||0; return v?model.unit.t(v):'<span style="color:#cfc9c0">0.00</span>'; }
     var head='<th style="text-align:left;background:#000;color:#fff">Asset Class</th>'+cols.map(function(c){return '<th style="background:#000;color:#fff">'+c+'</th>';}).join('')+'<th style="background:#000;color:#fff">Grand Total</th>';
     var body='';
     data.assets.forEach(function(a){
       var at=0; var cells=cols.map(function(c){ var v=a.total[c]||0; at+=v; return '<td style="text-align:right">'+fmt(v)+'</td>'; }).join('');
-      body+='<tr style="font-weight:700;background:#D9D9D9"><td>'+a.asset+'</td>'+cells+'<td style="text-align:right">'+at.toFixed(2)+'</td></tr>';
+      body+='<tr style="font-weight:700;background:#D9D9D9"><td>'+a.asset+'</td>'+cells+'<td style="text-align:right">'+model.unit.t(at)+'</td></tr>';
       a.products.forEach(function(p){
         var pt=0; var pc=cols.map(function(c){ var v=p.vals[c]||0; pt+=v; return '<td style="text-align:right">'+fmt(v)+'</td>'; }).join('');
-        body+='<tr><td style="padding-left:20px;color:#333">'+p.product+'</td>'+pc+'<td style="text-align:right">'+pt.toFixed(2)+'</td></tr>';
+        body+='<tr><td style="padding-left:20px;color:#333">'+p.product+'</td>'+pc+'<td style="text-align:right">'+model.unit.t(pt)+'</td></tr>';
       });
     });
-    var gt=0; var gc=cols.map(function(c){ var v=data.grand[c]||0; gt+=v; return '<td style="text-align:right">'+v.toFixed(2)+'</td>'; }).join('');
-    body+='<tr style="font-weight:700;border-top:2px solid #000;background:#000;color:#fff"><td>Grand Total</td>'+gc+'<td style="text-align:right">'+gt.toFixed(2)+'</td></tr>';
-    s.innerHTML='<div class="card"><h3>'+title+' — Asset Allocation</h3><div class="sub">*Portfolio as on '+model.meta.asOnDate+'. Current Market Value in ₹ Crore.</div>'+
+    var gt=0; var gc=cols.map(function(c){ var v=data.grand[c]||0; gt+=v; return '<td style="text-align:right">'+model.unit.t(v)+'</td>'; }).join('');
+    body+='<tr style="font-weight:700;border-top:2px solid #000;background:#000;color:#fff"><td>Grand Total</td>'+gc+'<td style="text-align:right">'+model.unit.t(gt)+'</td></tr>';
+    s.innerHTML='<div class="card"><h3>'+title+' — Asset Allocation</h3><div class="sub">*Portfolio as on '+model.meta.asOnDate+'. Current Market Value in '+model.unit.cap+'.</div>'+
       '<div style="overflow:auto"><table class="cz" style="font-size:12px;border-collapse:collapse">'+'<tr>'+head+'</tr>'+body+'</table></div></div>'+
       '<div class="card"><h3>Asset-class allocation across '+title.replace(' Level','').toLowerCase()+'s</h3>'+
       '<div class="sub">Each bar = a '+title.replace(' Level','').toLowerCase()+', stacked by asset class (% of CMV).</div>'+
