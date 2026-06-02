@@ -100,6 +100,11 @@ tr.lvl-sub td{background:var(--grey-l);font-weight:bold;text-align:left;}
 tr.lvl-grand td{background:#000;color:#fff;font-weight:bold;}
 tr.lvl-bench td{background:var(--bg-yellow);color:var(--brown-text);font-style:italic;}
 tr.lvl-item td:first-child{padding-left:20px;}
+/* Asset Allocation table: centred text, white product rows, full gridlines */
+table.cz.aa th,table.cz.aa td{text-align:center;border:1px solid var(--grey-l);}
+table.cz.aa th:first-child,table.cz.aa td:first-child{text-align:center;}
+table.cz.aa tr.lvl-product td{background:#fff;}
+table.cz.aa tr.lvl-item td:first-child{padding-left:8px;}
 .neg{color:var(--red);}
 .flex{display:flex;gap:20px;flex-wrap:wrap;}
 .col{flex:1;min-width:300px;}
@@ -286,11 +291,31 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     for (var t=0;t<toks.length;t++){ var w=SYN[toks[t]]||toks[t]; if(!seen[w]){ seen[w]=1; out.push(w); } }
     return out;
   }
-  // explicit aliases (legitimate 2-token names). key=normalized base, val=reference key.
-  var ALIASES = {};
+  // Explicit alias layer — consulted BEFORE fuzzy matching. Key = normalize(baseName).join(" ").
+  //  - value = a reference scheme name -> PIN to it (only when present in the universe being matched).
+  //  - value = ""                      -> BLOCK: never fuzzy-match this name (kills known spurious snaps).
+  // For client base-file names that differ from the reference master data (AIF / unlisted / FOF).
+  var ALIASES = {
+    // user-confirmed equivalences (base-file name -> canonical reference scheme).
+    // Inert until matching AIF/debt reference data containing these schemes is present (embedded or uploaded).
+    "mosaic multiyield fund series i": "Mosaic Asset Management Multiyield Fund",
+    "transition venture capital fund 1": "Transition VC Fund",
+    // block spurious fuzzy matches (AIF/FOF base names, blank AMC, that snap onto unrelated funds):
+    "icici pru leaders fund series iv": "",             // was -> ICICI Pru Commodities Fund
+    "nippon equity opp aif scheme 9": "",               // was -> Nippon India US Equity Opp Fund
+    "icici pru enhanced dynamic equity fund": "",       // was -> ICICI Pru Equity & Debt Fund
+    "kotak global innovation overseas equity omni fof": "" // was -> Kotak Income Plus Arbitrage
+  };
   function tokenSet(arr){ var o={}; for(var i=0;i<arr.length;i++) o[arr[i]]=1; return o; }
   function matchInstrument(name, amc, candidates, candNormCache){
     var nt = normalize(name); var ntset = tokenSet(nt);
+    // alias short-circuit: pin a known scheme (if in this universe) or block a known spurious match
+    var _ak = nt.join(" ");
+    if (Object.prototype.hasOwnProperty.call(ALIASES,_ak)){
+      var _av = ALIASES[_ak];
+      if (_av==="") return null;
+      for (var _ai=0;_ai<candidates.length;_ai++){ if(candidates[_ai]===_av) return _av; }
+    }
     var amcTok = (normalize(amc)[0]||"");
     var best=null, bestShared=0, bestJac=0;
     for (var i=0;i<candidates.length;i++){
@@ -1844,7 +1869,7 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     var s=document.getElementById('s-asset'); var m=model;
     var rows=m.assetAllocation.rows.map(function(r){
       var cls=r.level==='asset'?'lvl-asset':(r.level==='product'?'lvl-product':(r.level==='grand'?'lvl-grand':'lvl-item'));
-      return '<tr class="'+cls+'"><td>'+(r.level==='product'?'&nbsp;&nbsp;':'')+r.label+'</td><td>'+ce(r.inv)+'</td><td>'+ce(r.cmv)+'</td><td>'+r.pct.toFixed(2)+'%</td></tr>';
+      return '<tr class="'+cls+'"><td>'+r.label+'</td><td>'+ce(r.inv)+'</td><td>'+ce(r.cmv)+'</td><td>'+r.pct.toFixed(2)+'%</td></tr>';
     }).join('');
     s.innerHTML='<div class="card"><div class="kpis">'+
       '<div class="kpi"><div class="v">₹'+m.totalCMV.toFixed(2)+' Cr</div><div class="l">Current Market Value</div></div>'+
@@ -1853,7 +1878,7 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       '<div class="kpi"><div class="v">'+m.holdings.length+'</div><div class="l">Holdings</div></div>'+
       '<div class="kpi"><div class="v">'+m.clients.length+'</div><div class="l">Clients</div></div></div></div>'+
       '<div class="card"><h3>Asset Allocation</h3><div class="sub">*Portfolio as on '+m.meta.asOnDate+'</div>'+
-      '<div class="flex"><div class="col"><table class="cz"><tr><th>Asset Class</th><th>Investment (Cr.)</th><th>Current Market Value (Cr.)</th><th>% CMV</th></tr>'+rows+'</table></div>'+
+      '<div class="flex"><div class="col"><table class="cz aa"><tr><th>Asset Class</th><th>Investment Amount (Cr.)</th><th>Current Market Value (Cr.)</th><th>% CMV</th></tr>'+rows+'</table></div>'+
       '<div class="col"><div class="piewrap"><div class="pc"><h4>By Asset Class</h4><div class="chartbox"><canvas id="pieAsset"></canvas></div></div>'+
       '<div class="pc"><h4>Liquidity / Structure</h4><div class="chartbox"><canvas id="pieLiq"></canvas></div></div></div></div></div></div>';
     var pal=['#DBC8B2','#BFBFBF','#BD9568','#808080','#8C6B43'];
@@ -2178,21 +2203,4 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     }catch(e){ setStatus('PowerPoint generation failed: '+e.message,true); console.error(e); done(); }
   };
   document.getElementById('dlxls').onclick=function(){
-    if(!model)return; var btn=this; btn.disabled=true; var old=btn.textContent; btn.textContent='Generating…';
-    try{ var fn='Portfolio Review_'+model.meta.familyName+'_'+model.meta.asOnDate+'.xlsx';
-      var wb=E.buildXLSX(model,XLSX); XLSX.writeFile(wb,fn); setStatus('Excel downloaded: <b>'+fn+'</b>');
-    }catch(e){ setStatus('Excel generation failed: '+e.message,true); console.error(e); }
-    btn.disabled=false; btn.textContent=old;
-  };
-})();
-</script>
-<script>(function(){
-function setLogo(d,which){ BRAND_LOGO=d; var p=document.getElementById("logoPrev"); if(p)p.src=d; var bi=document.getElementById("logoInv"),bo=document.getElementById("logoOne"); if(bi&&bo){ bi.style.background=which==="inv"?"#BD9568":"#fff"; bi.style.color=which==="inv"?"#fff":"#000"; bo.style.background=which==="one"?"#BD9568":"#fff"; bo.style.color=which==="one"?"#fff":"#000"; } }
-var bi=document.getElementById("logoInv"); if(bi) bi.onclick=function(){ setLogo(BRAND_LOGOS.invictus,"inv"); };
-var bo=document.getElementById("logoOne"); if(bo) bo.onclick=function(){ setLogo(BRAND_LOGOS.onedigital,"one"); };
-var lu=document.getElementById("logoUp"); if(lu) lu.onchange=function(e){ var f=e.target.files[0]; if(!f)return; var r=new FileReader(); r.onload=function(){ setLogo(r.result,"custom"); }; r.readAsDataURL(f); };
-var pv=document.getElementById("logoPrev"); if(pv) pv.src=BRAND_LOGO;
-var mu=document.getElementById("up-mkt"); if(mu) mu.onchange=function(e){ var fs=Array.prototype.slice.call(e.target.files); if(!fs.length)return; var out=[],done=0; fs.forEach(function(f,ix){ var r=new FileReader(); r.onload=function(){ out[ix]=r.result; if(++done===fs.length){ MARKET_UPDATE_IMAGES=out.filter(Boolean); var st=document.getElementById("rs-mkt"); if(st)st.textContent="Uploaded ("+MARKET_UPDATE_IMAGES.length+")"; } }; r.readAsDataURL(f); }); };
-})();</script>
-</body>
-</html>
+    if(!model)return; var btn=this; btn.disabled=true; var old=btn.textC
