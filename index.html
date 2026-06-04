@@ -2325,4 +2325,224 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       x.textAlign='center'; x.font='bold 11px Cambria';
       for(var c2=0;c2<k;c2++){
         var ci=idx[c2], v=ov.matrix[ri][ci], d=ri===ci, faded=(!d&&v<ovTh);
-        var
+        var cx=ox+c2*cell, cy=oy+lab+r*rowH;
+        if(faded){ x.fillStyle='#2c3b4d'; x.fillRect(cx,cy,cell-1,rowH-1); continue; }
+        x.fillStyle=ovColH(v,d); x.fillRect(cx,cy,cell-1,rowH-1);
+        x.fillStyle=ovTxtH(v,d); x.fillText((d?'100.00':v.toFixed(2))+'%',cx+cell/2,cy+rowH/2);
+      }
+      x.fillStyle='#EDE6DA'; x.fillText(String(r+1),ox+k*cell+lab/2,oy+lab+r*rowH+rowH/2);
+    }
+    var ly=oy+lab+k*rowH+26; x.textAlign='left'; x.textBaseline='middle'; x.font='11px Cambria';
+    var lg=[['#B98C5A','Diagonal (100%)'],['#F2E9DC','< 15% low'],['#DCC4A5','15-30% moderate'],['#C49A66','30-50% high'],['#A87B45','> 50% very high']];
+    var lx=pad; lg.forEach(function(p){ x.fillStyle=p[0]; x.fillRect(lx,ly-8,15,15); x.fillStyle='#EDE6DA'; x.fillText(p[1],lx+20,ly); lx+=x.measureText(p[1]).width+52; });
+    return cv;
+  }
+  function downloadOvImage(ov){ var cv=overlapCanvas(ov); if(!cv){ alert('No funds with overlap >= the current threshold. Lower the slider.'); return; } var a=document.createElement('a'); a.href=cv.toDataURL('image/png'); a.download='Overlap Matrix_'+model.meta.familyName+'_'+model.meta.asOnDate+'.png'; a.click(); }
+  function renderPerf(){
+    var s=document.getElementById('s-perf'); var html='';
+    if(!model.performance.buckets.length){ s.innerHTML='<div class="card"><div class="empty">No performance data available.</div></div>'; document.getElementById('s-perf').innerHTML=html||s.innerHTML; return; }
+    model.performance.buckets.forEach(function(bk){
+      var cols=bk.cols.slice(); var head='<th>Scheme</th><th>Inception</th><th>AUM (Cr.)</th>'+cols.map(function(c){return '<th>'+c+'</th>';}).join('');
+      if(bk.mcap) head+='<th>Large</th><th>Mid</th><th>Small</th><th>Others</th>';
+      if(bk.debt) head+='<th>YTM</th><th>Avg Mat</th><th>Mod Dur</th>';
+      var ncol=3+cols.length+(bk.mcap?4:0)+(bk.debt?3:0);
+      var body=bk.rows.map(function(r){
+        if(r.type==='sub') return '<tr class="lvl-sub"><td colspan="'+ncol+'">'+r.label+'</td></tr>';
+        if(r.type==='bench'){ var c='<tr class="lvl-bench"><td>'+r.label+'</td><td>—</td><td>—</td>';
+          cols.forEach(function(cc){var v=(r.r||{})[cc];c+='<td>'+(v==null||isNaN(v)?'—':v.toFixed(2))+'</td>';});
+          if(bk.mcap)c+='<td>—</td><td>—</td><td>—</td><td>—</td>';
+          if(bk.debt)c+='<td>—</td><td>—</td><td>—</td>';
+          return c+'</tr>'; }
+        var line='<tr><td>'+r.name+'</td><td style="text-align:center">'+isoToDMY(r.inception||'—')+'</td><td>'+(r.aum==null?'—':Math.round(r.aum).toLocaleString('en-IN'))+'</td>';
+        cols.forEach(function(cc){var v=(r.r||{})[cc];line+='<td'+neg(v)+'>'+(v==null||isNaN(v)?'—':v.toFixed(2))+'</td>';});
+        if(bk.mcap)['Large','Mid','Small','Others'].forEach(function(mk){var v=(r.mcap||{})[mk];line+='<td>'+(v==null||isNaN(v)?'—':v.toFixed(2))+'</td>';});
+        if(bk.debt)['YTM','AvgMat','ModDur'].forEach(function(dk){var v=(r.debt||{})[dk];line+='<td>'+(v==null||isNaN(v)?'—':v.toFixed(2))+'</td>';});
+        return line+'</tr>';
+      }).join('');
+      html+='<div class="card"><h3>Performance Sheet — '+bk.key+'</h3><div class="sub">*Performance as on '+model.meta.dataDates.performance+'. Annualised for ≥1Y. Missing data shown as —.</div>'+
+        '<div style="overflow:auto;"><table class="cz" style="font-size:11.5px;"><tr>'+head+'</tr>'+body+'</table></div></div>';
+    });
+    s.innerHTML=html;
+  }
+
+
+  function renderIRR(){
+    var s=document.getElementById('s-irr'); if(!s) return;
+    if(!model.irr || !model.irrActive){
+      s.innerHTML='<div class="card"><div class="empty">No transaction-based IRR loaded. Upload an <b>IRR Transactions</b> file (a workbook with a <b>SI Xirr</b> sheet, and optionally <b>SI Bmxirr</b> for the benchmark) in the Reference data panel above.</div></div>';
+      return;
+    }
+    function fmtP(v){ return v!=null?(v*100).toFixed(2)+'%':'—'; }
+    function devInfo(f,b){
+      if(f==null||b==null) return {str:'—',col:'#BFBFBF'};
+      var d=(f-b)*100;
+      return {str:(d>=0?'+':'')+d.toFixed(2)+'%', col:d>0?'#1B6B2E':d<0?'#931621':'#888'};
+    }
+    function kpiBox(lbl,val,col){
+      return '<div style="flex:1;min-width:100px;background:#FBF7F1;border:0.5px solid #DBC8B2;border-radius:6px;padding:8px 12px;">'+
+        '<div style="font-size:11px;color:#888;margin-bottom:3px">'+lbl+'</div>'+
+        '<div style="font-size:17px;font-weight:700;color:'+(col||'#000')+'">'+val+'</div></div>';
+    }
+    var ctxCli='',ctxAst='',ctxPrd='';
+    var instrList=[], summaryRows=[];
+    model.irr.forEach(function(r){
+      if(r.level<4){ summaryRows.push(r); }
+      if(r.level===1) ctxCli=r.label;
+      else if(r.level===2) ctxAst=r.label;
+      else if(r.level===3) ctxPrd=r.label;
+      else if(r.level===4) instrList.push({name:r.label,fund:r.fund,bench:r.bench,benchName:r.benchName,client:ctxCli,asset:ctxAst,product:ctxPrd});
+    });
+    var cats={out:[],line:[],under:[],noB:[]};
+    instrList.forEach(function(x){
+      if(x.bench==null||x.fund==null){ cats.noB.push(x); return; }
+      var range=Math.abs(x.bench)*0.10;
+      if(x.fund>=x.bench+range) cats.out.push(x);
+      else if(x.fund<=x.bench-range) cats.under.push(x);
+      else cats.line.push(x);
+    });
+    function sortBucket(arr){ arr.sort(function(a,b){ var da=a.fund!=null&&a.bench!=null?(a.fund-a.bench):0, db=b.fund!=null&&b.bench!=null?(b.fund-b.bench):0; return db-da; }); }
+    sortBucket(cats.out); sortBucket(cats.line); sortBucket(cats.under);
+    var p0=model.irr[0]||{};
+    var pFund=p0.fund, pBench=p0.bench;
+    var pDev=devInfo(pFund,pBench);
+    var pBenchPct=pBench!=null?pBench*100:null;
+    var pRange=pBenchPct!=null?Math.abs(pBenchPct)*0.10:null;
+    var kpis='<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">'+
+      kpiBox('Portfolio Fund IRR',fmtP(pFund))+
+      kpiBox('Portfolio BMIRR',fmtP(pBench))+
+      kpiBox('Out / Under',pDev.str,pDev.col)+
+      kpiBox('Outperforming',cats.out.length,'#1B6B2E')+
+      kpiBox('In Line',cats.line.length,'#BD9568')+
+      kpiBox('Underperforming',cats.under.length,'#931621')+
+      '</div>';
+    var bandHtml='';
+    if(pBenchPct!=null){
+      var lo=(pBenchPct-pRange).toFixed(2), hi=(pBenchPct+pRange).toFixed(2);
+      bandHtml='<div style="background:#FBF7F1;border:0.5px solid #DBC8B2;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:12px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;">'+
+        '<span><b>Classification bands</b></span>'+
+        '<span style="color:#555">Portfolio BMIRR: <b>'+pBenchPct.toFixed(2)+'%</b></span>'+
+        '<span style="color:#555">Range (±10% of BMIRR): <b>±'+pRange.toFixed(2)+'pp</b></span>'+
+        '<span style="color:#1B6B2E;font-weight:600">Outperformer ≥ '+hi+'%</span>'+
+        '<span style="color:#BD9568;font-weight:600">In Line: '+lo+'% – '+hi+'%</span>'+
+        '<span style="color:#931621;font-weight:600">Underperformer ≤ '+lo+'%</span>'+
+        '</div>';
+    }
+    function instrCard(x,accentCol){
+      var dev=devInfo(x.fund,x.bench);
+      return '<div style="background:#fff;border:0.5px solid #E0D8D0;border-left:3px solid '+accentCol+';border-radius:4px;padding:8px 12px;margin-bottom:5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'+
+        '<div style="flex:2;min-width:140px">'+
+          '<div style="font-weight:600;font-size:12.5px">'+x.name+'</div>'+
+          '<div style="font-size:10.5px;color:#999;margin-top:2px">'+x.client+(x.product?' · '+x.product:'')+'</div>'+
+        '</div>'+
+        '<div style="min-width:72px;text-align:right"><div style="font-size:10px;color:#999">Fund IRR</div><div style="font-size:13px;font-weight:600">'+fmtP(x.fund)+'</div></div>'+
+        '<div style="min-width:72px;text-align:right"><div style="font-size:10px;color:#999">BMIRR</div><div style="font-size:13px">'+fmtP(x.bench)+'</div></div>'+
+        '<div style="min-width:72px;text-align:right"><div style="font-size:10px;color:#999">Deviation</div><div style="font-size:13px;font-weight:700;color:'+dev.col+'">'+dev.str+'</div></div>'+
+        '</div>';
+    }
+    function sectionBox(title,bgCol,borderCol,accentCol,items){
+      if(!items.length) return '';
+      return '<div style="background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:12px 14px;margin-bottom:14px;">'+
+        '<div style="font-weight:700;font-size:11.5px;color:'+accentCol+';text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">'+title+' ('+items.length+')</div>'+
+        items.map(function(x){ return instrCard(x,accentCol); }).join('')+
+        '</div>';
+    }
+    var lvlN=['Total Portfolio','Client','Asset','Product'];
+    var tRows=summaryRows.map(function(r){
+      var pad=8+r.level*16, bg=r.level===0?'#DBC8B2':r.level===1?'#EFE7DC':'';
+      var fw=r.level<=1?700:r.level===2?600:400;
+      var dv=devInfo(r.fund,r.bench);
+      return '<tr style="background:'+bg+'"><td style="padding-left:'+pad+'px;font-weight:'+fw+';font-size:12px">'+r.label+'</td>'+
+        '<td style="text-align:center;color:#888;font-size:10.5px">'+lvlN[r.level]+'</td>'+
+        '<td style="color:#666;font-size:10.5px">'+r.benchName+'</td>'+
+        '<td style="text-align:right;font-weight:'+fw+';font-size:12px">'+fmtP(r.fund)+'</td>'+
+        '<td style="text-align:right;font-size:12px">'+fmtP(r.bench)+'</td>'+
+        '<td style="text-align:right;font-weight:700;font-size:12px;color:'+dv.col+'">'+dv.str+'</td></tr>';
+    }).join('');
+    var hierTable='<div style="overflow:auto"><table class="cz" style="width:100%;border-collapse:collapse;font-size:12px">'+
+      '<tr><th style="text-align:left">Name</th><th style="text-align:center">Level</th>'+
+      '<th style="text-align:left">Benchmark</th><th style="text-align:right">Fund IRR</th>'+
+      '<th style="text-align:right">BMIRR</th><th style="text-align:right">Out/Under</th></tr>'+
+      tRows+'</table></div>';
+    s.innerHTML='<div class="card">'+
+      '<h3>Fund IRR vs Benchmark — Transaction-based XIRR</h3>'+
+      '<div class="sub">*XIRR (actual/365) as on '+(model.irrAsOn||'—')+'. In-line band = ±10% of BMIRR value. Instruments sorted by deviation within each box.</div>'+
+      kpis+bandHtml+
+      (instrList.length?
+        '<div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Instrument Classification</div>'+
+        sectionBox('▲ Outperforming','#F2FBF4','#A8D5B5','#1B6B2E',cats.out)+
+        sectionBox('▬ In Line','#FDF8EF','#E8D0A8','#BD9568',cats.line)+
+        sectionBox('▼ Underperforming','#FFF5F5','#F0B8B8','#931621',cats.under)+
+        (cats.noB.length?sectionBox('— No Benchmark Data','#F8F8F8','#D9D9D9','#888',cats.noB):'')+
+        '<details style="margin-top:4px"><summary style="cursor:pointer;font-size:12px;color:#888;padding:4px 0;user-select:none">▸ Portfolio / Client / Asset / Product hierarchy</summary><div style="margin-top:8px">'+hierTable+'</div></details>'
+      : hierTable)+
+      '</div>';
+  }
+  function renderObs(){
+    var s=document.getElementById('s-obs');
+    var li=model.observations.map(function(o,i){return '<li><span class="n">'+(i+1)+'</span><p>'+o+'</p></li>';}).join('');
+    s.innerHTML='<div class="card"><h3>Portfolio Observations</h3><ul class="obs">'+li+'</ul></div>';
+  }
+
+  function renderAlloc(surfId, data, title){
+    var s=document.getElementById(surfId); if(!s) return;
+    if(!data||!data.cols.length){ s.innerHTML='<div class="card"><div class="empty">No allocation data available.</div></div>'; return; }
+    var cols=data.cols;
+    function fmt(v){ v=v||0; return v?model.unit.t(v):'<span style="color:#cfc9c0">0.00</span>'; }
+    var head='<th style="text-align:left;background:#000;color:#fff">Asset Class</th>'+
+      cols.map(function(c){return '<th style="background:#000;color:#fff">'+c+'</th>';}).join('')+
+      '<th style="background:#000;color:#fff">Total</th>';
+    var body='';
+    data.assets.forEach(function(a){
+      var at=0; var cells=cols.map(function(c){ var v=a.total[c]||0; at+=v; return '<td style="text-align:right">'+fmt(v)+'</td>'; }).join('');
+      body+='<tr style="font-weight:700;background:#D9D9D9"><td>'+a.asset+'</td>'+cells+'<td style="text-align:right">'+model.unit.t(at)+'</td></tr>';
+      a.products.forEach(function(p){
+        var pt=0; var pc=cols.map(function(c){ var v=p.vals[c]||0; pt+=v; return '<td style="text-align:right">'+fmt(v)+'</td>'; }).join('');
+        body+='<tr><td style="padding-left:20px;color:#333">'+p.product+'</td>'+pc+'<td style="text-align:right">'+model.unit.t(pt)+'</td></tr>';
+      });
+    });
+    var gt=0; var gc=cols.map(function(c){ var v=data.grand[c]||0; gt+=v; return '<td style="text-align:right">'+model.unit.t(v)+'</td>'; }).join('');
+    body+='<tr style="font-weight:700;background:#000;color:#fff"><td>Grand Total</td>'+gc+'<td style="text-align:right">'+model.unit.t(gt)+'</td></tr>';
+    s.innerHTML='<div class="card"><h3>'+title+' — Asset Allocation</h3>'+
+      '<div class="sub">*CMV in '+model.unit.cap+'. Portfolio as on '+model.meta.asOnDate+'.</div>'+
+      '<div style="overflow:auto"><table class="cz" style="font-size:12px;border-collapse:collapse"><tr>'+head+'</tr>'+body+'</table></div></div>';
+  }
+  function renderDistAlloc(){ renderAlloc('s-distalloc', model.allocByDistributor, 'Distributor Level'); }
+  function renderClientAlloc(){ renderAlloc('s-clalloc', model.allocByClient, 'Client Level'); }
+  function triggerDownload(blob, fn){
+    var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download=fn;
+    document.body.appendChild(a); a.click();
+    setTimeout(function(){ try{URL.revokeObjectURL(url); a.remove();}catch(e){} },1500);
+  }
+  document.getElementById('dlppt').onclick=function(){
+    if(!model)return;
+    var Ppt=(typeof PptxGenJS!=='undefined')?PptxGenJS:(window.PptxGenJS||window.pptxgen);
+    if(!Ppt){ setStatus('PowerPoint engine not available in this browser session. Try reopening the file.',true); return; }
+    var btn=this; btn.disabled=true; var old=btn.textContent; btn.textContent='Generating…';
+    function done(){ btn.disabled=false; btn.textContent=old; }
+    try{
+      // reflect the current on-screen overlap view (selected funds + threshold) in the deck
+      model.overlapView=null;
+      if(model.overlap && model.overlap.eligible && typeof ovDisplayIdx==='function'){
+        var idx=ovDisplayIdx(model.overlap);
+        if(idx.length>=2 && idx.length<model.overlap.funds.length){
+          model.overlapView={eligible:true,funds:idx.map(function(i){return model.overlap.funds[i];}),
+            matrix:idx.map(function(ri){return idx.map(function(ci){return model.overlap.matrix[ri][ci];});})};
+        }
+      }
+      var fn='Portfolio Review_'+model.meta.familyName+'_'+model.meta.asOnDate+'.pptx';
+      var p=E.buildPPTX(model,Ppt);
+      Promise.resolve(p.write({outputType:'blob'})).then(function(blob){
+        triggerDownload(blob, fn); setStatus('PowerPoint downloaded: <b>'+fn+'</b>'); done();
+      }).catch(function(e){ setStatus('PowerPoint generation failed: '+e.message,true); console.error(e); done(); });
+    }catch(e){ setStatus('PowerPoint generation failed: '+e.message,true); console.error(e); done(); }
+  };
+  document.getElementById('dlxls').onclick=function(){
+    if(!model)return; var btn=this; btn.disabled=true; var old=btn.textContent; btn.textContent='Generating…';
+    try{ var fn='Portfolio Review_'+model.meta.familyName+'_'+model.meta.asOnDate+'.xlsx';
+      var wb=E.buildXLSX(model,XLSX); XLSX.writeFile(wb,fn); setStatus('Excel downloaded: <b>'+fn+'</b>');
+    }catch(e){ setStatus('Excel generation failed: '+e.message,true); console.error(e); }
+    btn.disabled=false; btn.textContent=old;
+  };
+})();
+</script>
+</html>
