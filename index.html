@@ -1103,6 +1103,8 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
    ============================================================================ */
 (function (global) {
   "use strict";
+  // ISO YYYY-MM-DD → DD-MM-YYYY for display (local copy for exporter scope)
+  function isoToDMY(s){ if(!s||s==='—') return s||'—'; var m=String(s).match(/^(\d{4})-(\d{2})-(\d{2})$/); return m?m[3]+'-'+m[2]+'-'+m[1]:s; }
   var ENGINE = global.ENGINE || (typeof module!=="undefined" && module.require ? require("./engine.js") : {});
   var C = ENGINE.palette, F = ENGINE.FONT, pct2 = ENGINE.fmt.pct2, cr2 = ENGINE.fmt.cr2;
 
