@@ -154,7 +154,11 @@ table.ovx td{min-width:58px;height:30px;text-align:center;font-size:11px;border:
 .refitem .reflbl{font-size:12.5px;font-weight:bold;}
 .refitem .refstatus{font-size:11px;color:#888;margin:3px 0 8px;}
 .refitem .refstatus.loaded{color:var(--green);font-weight:bold;}
-.refbtn{display:inline-block;background:#000;color:#fff;font-size:11.5px;font-weight:bold;padding:5px 12px;border-radius:4px;cursor:pointer;}
+.refbtn{display:inline-block;background:#000;color:#fff;font-size:11.5px;font-weight:bold;padding:5px 12px;border-radius:4px;cursor:pointer;border:none;font-family:inherit;}
+.tplbtn{background:#BD9568;margin-left:6px;}
+.refclr{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;border:1px solid #ccc;background:transparent;color:#aaa;font-size:14px;line-height:1;cursor:pointer;padding:0;margin-left:6px;vertical-align:middle;font-family:inherit;}
+.refclr:hover{color:#931621;border-color:#931621;background:#fff5f5;}
+.refhint{font-size:10.5px;color:#8a7a68;margin-top:6px;line-height:1.4;border-top:1px solid #E8DDD3;padding-top:5px;}
 </style>
 </head>
 <body>
@@ -183,12 +187,12 @@ table.ovx td{min-width:58px;height:30px;text-align:center;font-size:11px;border:
   <div class="panel refpanel">
     <div class="refhead">Reference data <span>— embedded defaults are used unless you upload a fresher file</span></div>
     <div class="refrow">
-      <div class="refitem"><div class="reflbl">Daily MF Monitor</div><div class="refstatus" id="rs-mon">Embedded default</div><label class="refbtn">Upload .xlsx<input type="file" id="up-mon" accept=".xlsx,.xls" hidden></label></div>
-      <div class="refitem"><div class="reflbl">PMS Analytics (Client SOA)</div><div class="refstatus" id="rs-pms">Embedded default</div><label class="refbtn">Upload .xlsx<input type="file" id="up-pms" accept=".xlsx,.xls" hidden></label></div>
-      <div class="refitem"><div class="reflbl">Bonds / Debt Analytics</div><div class="refstatus" id="rs-bonds">Embedded default</div><label class="refbtn">Upload .xlsx<input type="file" id="up-bonds" accept=".xlsx,.xls" hidden></label></div>
-      <div class="refitem"><div class="reflbl">SIF Monitor</div><div class="refstatus" id="rs-sif">Not uploaded</div><label class="refbtn">Upload .xlsx<input type="file" id="up-sif" accept=".xlsx,.xls" hidden></label></div>
-      <div class="refitem"><div class="reflbl">Direct MF Monitor</div><div class="refstatus" id="rs-dir">Not uploaded</div><label class="refbtn">Upload .xlsx<input type="file" id="up-dir" accept=".xlsx,.xls" hidden></label></div>
-      <div class="refitem"><div class="reflbl">IRR Transactions</div><div class="refstatus" id="rs-irr">Not uploaded</div><label class="refbtn">Upload .xlsx<input type="file" id="up-irr" accept=".xlsx,.xls" hidden></label></div><div class="refitem"><div class="reflbl">Market Update slides</div><div class="refstatus" id="rs-mkt">Embedded default (4)</div><label class="refbtn">Upload images<input type="file" id="up-mkt" accept="image/*" multiple hidden></label></div>
+      <div class="refitem"><div class="reflbl">Daily MF Monitor</div><div class="refstatus" id="rs-mon">Embedded default</div><label class="refbtn">Upload .xlsx<input type="file" id="up-mon" accept=".xlsx,.xls" hidden></label><button class="refclr" id="clr-mon" title="Reset to embedded default">×</button></div>
+      <div class="refitem"><div class="reflbl">PMS / AIF Analytics (Client SOA)</div><div class="refstatus" id="rs-pms">Embedded default</div><label class="refbtn">Upload .xlsx<input type="file" id="up-pms" accept=".xlsx,.xls" hidden></label><button class="refbtn tplbtn" id="tpl-pms" title="Download blank template with required columns">Template ↓</button><button class="refclr" id="clr-pms" title="Reset to embedded default">×</button><div class="refhint">Client SOA columns: Product Category · Scheme Name · Company Name · Corrected Name · Holding(%) · Sector · ISIN · SEBI Mcap</div></div>
+      <div class="refitem"><div class="reflbl">Bonds / Debt Analytics</div><div class="refstatus" id="rs-bonds">Embedded default</div><label class="refbtn">Upload .xlsx<input type="file" id="up-bonds" accept=".xlsx,.xls" hidden></label><button class="refbtn tplbtn" id="tpl-bonds" title="Download blank template with required columns">Template ↓</button><button class="refclr" id="clr-bonds" title="Reset to embedded default">×</button><div class="refhint">Direct bond/NCD columns: Instrument Name · % Allocation · Rating · Issuer</div></div>
+      <div class="refitem"><div class="reflbl">SIF Monitor</div><div class="refstatus" id="rs-sif">Not uploaded</div><label class="refbtn">Upload .xlsx<input type="file" id="up-sif" accept=".xlsx,.xls" hidden></label><button class="refclr" id="clr-sif" title="Remove uploaded data">×</button></div>
+      <div class="refitem"><div class="reflbl">Direct MF Monitor</div><div class="refstatus" id="rs-dir">Not uploaded</div><label class="refbtn">Upload .xlsx<input type="file" id="up-dir" accept=".xlsx,.xls" hidden></label><button class="refclr" id="clr-dir" title="Remove uploaded data">×</button></div>
+      <div class="refitem"><div class="reflbl">IRR Transactions</div><div class="refstatus" id="rs-irr">Not uploaded</div><label class="refbtn">Upload .xlsx<input type="file" id="up-irr" accept=".xlsx,.xls" hidden></label><button class="refclr" id="clr-irr" title="Remove uploaded data">×</button></div><div class="refitem"><div class="reflbl">Market Update slides</div><div class="refstatus" id="rs-mkt">Embedded default (4)</div><label class="refbtn">Upload images<input type="file" id="up-mkt" accept="image/*" multiple hidden></label><button class="refclr" id="clr-mkt" title="Reset to embedded slides">×</button></div>
     </div>
   </div>
 
@@ -349,6 +353,8 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
   function liquidityClass(prod, cat){
     var p = String(prod||"").toLowerCase(), k = String(cat||"").toLowerCase();
     if (p.indexOf("aif")>=0) return "Close Ended";
+    // Unlisted equity (e.g. NSE, Pre-IPO shares) and similar illiquid instruments are Close Ended
+    if (/\bunlisted\b|pre[\s-]?ipo/.test(p)) return "Close Ended";
     if (/close|interval|fmp|fixed maturity|solution|children|retirement plan/.test(k)) return "Close Ended";
     // ELSS = open-ended scheme with statutory lock-in -> Open Ended (per sample = 100% open)
     return "Open Ended";
@@ -368,19 +374,50 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     var B = REF.BENCHMARKS||{};
     if (B[cat]) return B[cat];
     var k = String(cat||"").toLowerCase();
-    if (/large.*mid|mid.*large/.test(k)) return B["Large and Mid Cap Funds"];
-    if (/large/.test(k)) return B["Large Cap Funds"];
-    if (/mid/.test(k)) return B["Mid Cap Funds"];
-    if (/small/.test(k)) return B["Small Cap Funds"];
-    if (/flexi/.test(k)) return B["Flexi Cap Funds"];
-    if (/multi/.test(k)) return B["Multi Cap Funds"];
-    if (/focus/.test(k)) return B["Focused Funds"];
-    if (/value|contra/.test(k)) return B["Value Funds"];
-    if (/elss|tax/.test(k)) return B["Tax Saving/ELSS"];
-    if (/thematic|sector/.test(k)) return B["Thematic Funds"];
-    if (bucket==="PMS") return B["PMS"];
-    if (bucket==="AIF") return B["AIF"];
-    return "NIFTY 500 TRI";
+    /* ── Equity ── */
+    if (/large.*mid|mid.*large/.test(k)) return "Nifty LargeMidcap 250 - TRI";
+    if (/large/.test(k))                 return "Nifty 100 - TRI";
+    if (/mid/.test(k))                   return "Nifty Midcap 150 - TRI";
+    if (/small/.test(k))                 return "Nifty Smallcap 250 - TRI";
+    if (/flexi/.test(k))                 return "Nifty 500 - TRI";
+    if (/multi.*cap/.test(k))            return "Nifty 500 Multicap 50:25:25 - TRI";
+    if (/focus/.test(k))                 return "Nifty 500 - TRI";
+    if (/value|contra/.test(k))          return "BSE 500 - TRI";
+    if (/elss|tax/.test(k))              return "Nifty 500 - TRI";
+    if (/dividend/.test(k))              return "Nifty Dividend Opportunities 50 - TRI";
+    if (/thematic|sector/.test(k))       return "Nifty 500 - TRI";
+    if (/index fund|etf/.test(k))        return "Nifty 50 - TRI";
+    if (/global|internat|overseas/.test(k)) return "MSCI World Net Return Index";
+    /* ── Debt ── */
+    if (/overnight/.test(k))             return "Nifty 1D Rate Index";
+    if (/liquid/.test(k))                return "Nifty Liquid Fund - TRI";
+    if (/ultra.?short/.test(k))          return "Nifty Ultra Short Duration Debt Index";
+    if (/low.?duration/.test(k))         return "Nifty Low Duration Debt Index";
+    if (/money.?market/.test(k))         return "Nifty Money Market Index";
+    if (/short.?duration/.test(k))       return "Nifty Short Duration Debt Index";
+    if (/banking.*psu|psu.*bank/.test(k)) return "Nifty Banking & PSU Debt Index";
+    if (/corporate.?bond/.test(k))       return "Nifty AAA Short Duration Bond Index";
+    if (/credit.?risk/.test(k))          return "Nifty Credit Risk Bond Index";
+    if (/gilt.*10|10.*gilt|constant/.test(k)) return "Nifty 10 yr Benchmark G-Sec - TRI";
+    if (/gilt/.test(k))                  return "Nifty All Duration G-Sec Index";
+    if (/dynamic.?bond/.test(k))         return "CRISIL Composite Bond Fund Index";
+    if (/medium.*long|long.*duration/.test(k)) return "Nifty Medium to Long Duration Debt Index";
+    if (/medium.?duration/.test(k))      return "Nifty Medium Duration Debt Index";
+    if (/float/.test(k))                 return "Nifty Floating Rate Debt Index";
+    if (/short.*mid|mid.*term/.test(k))  return "Nifty Short Duration Debt Index";
+    /* ── Hybrid ── */
+    if (/arbitrage/.test(k))             return "Nifty 50 Arbitrage Index";
+    if (/equity.?savings/.test(k))       return "Nifty Equity Savings Index";
+    if (/conservative.*hybrid|hybrid.*85/.test(k)) return "CRISIL Hybrid 85+15 Conservative Index";
+    if (/aggressive.*hybrid|hybrid.*35|balanced.*hybrid/.test(k)) return "CRISIL Hybrid 35+65 Aggressive Index";
+    if (/balanced.?advantage|dynamic.?asset/.test(k)) return "Nifty 50 Hybrid Composite Debt 65:35 Index";
+    if (/multi.?asset/.test(k))          return "Nifty 500 - TRI";
+    if (/equity.?oriented|hybrid/.test(k)) return "CRISIL Hybrid 35+65 Aggressive Index";
+    if (/debt.?oriented/.test(k))        return "CRISIL Hybrid 85+15 Conservative Index";
+    /* ── PMS / AIF / fallback ── */
+    if (bucket==="PMS") return "Nifty 500 - TRI";
+    if (bucket==="AIF") return "Nifty 500 - TRI";
+    return "Nifty 500 - TRI";
   }
 
   /* ===========================================================================
@@ -417,7 +454,8 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       alloc:  find(function(h){return h.indexOf("allocation")>=0;}),
       xirr:   find(function(h){return h.indexOf("xirr")>=0 && h.indexOf("bm")<0;}),
       bmxirr: find(function(h){return h.indexOf("bmxirr")>=0 || (h.indexOf("bm")>=0 && h.indexOf("xirr")>=0);}),
-      days:   find(function(h){return h.indexOf("holding")>=0 && h.indexOf("day")>=0;})
+      days:   find(function(h){return h.indexOf("holding")>=0 && h.indexOf("day")>=0;}),
+      liq:    find(function(h){return h==="liquidity"||(h.indexOf("liquid")>=0 && h.indexOf("structure")<0);})
     };
     function gv(r,c){ return (c>=0 && r[c]!=null) ? r[c] : null; }
     function gn(r,c){ var v=gv(r,c); if(v==null||v==="") return null; var f=parseFloat(String(v).replace(/,/g,"")); return isNaN(f)?null:f; }
@@ -448,12 +486,51 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
         invCr: _inv||0,
         cmvCr: cmv,
         glCr: _gl,
+        liquidity: ws(gv(r,col.liq))||null, // from base file column "Liquidity" if present
         allocFrac: gn(r,col.alloc),       // fraction
         xirrFrac: gn(r,col.xirr),         // fraction
         bmxirrFrac: gn(r,col.bmxirr),     // fraction
         days: gn(r,col.days)
       });
     }
+    /* ---- Merge duplicate folios: same client + instrument + product + distributor ----
+       Sums all financial fields; computes CMV-weighted XIRR / BMXIRR across folios. */
+    var _mergeKey=function(h){ return (h.client||"")+"\x00"+(h.name||"")+"\x00"+(h.product||"")+"\x00"+(h.distributor||""); };
+    var _seen={}, _merged=[];
+    rows.forEach(function(h){
+      var k=_mergeKey(h);
+      if(!_seen[k]){
+        // Initialise weighted-XIRR accumulators
+        h._xWt  = (h.xirrFrac!=null && h.cmvCr) ? h.xirrFrac*h.cmvCr : 0;
+        h._xCmv = (h.xirrFrac!=null && h.cmvCr) ? h.cmvCr : 0;
+        h._bWt  = (h.bmxirrFrac!=null && h.cmvCr) ? h.bmxirrFrac*h.cmvCr : 0;
+        h._bCmv = (h.bmxirrFrac!=null && h.cmvCr) ? h.cmvCr : 0;
+        _seen[k]=h; _merged.push(h);
+      } else {
+        var m=_seen[k];
+        // Accumulate weighted XIRR/BMXIRR BEFORE updating CMV
+        if(h.xirrFrac!=null && h.cmvCr){ m._xWt+=(h.xirrFrac*h.cmvCr); m._xCmv+=h.cmvCr; }
+        if(h.bmxirrFrac!=null && h.cmvCr){ m._bWt+=(h.bmxirrFrac*h.cmvCr); m._bCmv+=h.cmvCr; }
+        // Sum financial fields
+        m.invCr=(m.invCr||0)+(h.invCr||0);
+        m.cmvCr=(m.cmvCr||0)+(h.cmvCr||0);
+        if(h.glCr!=null) m.glCr=(m.glCr||0)+(h.glCr||0);
+        if(h.invR!=null) m.invR=(m.invR||0)+(h.invR||0);
+        if(h.mvR!=null)  m.mvR=(m.mvR||0)+(h.mvR||0);
+        if(h.glR!=null)  m.glR=(m.glR||0)+(h.glR||0);
+        if(h.units!=null) m.units=(m.units||0)+(h.units||0);
+        m.allocFrac=null;  // stale; will be recomputed
+        if(h.folio) m.folio=m.folio?(m.folio+"/"+h.folio):h.folio;
+      }
+    });
+    // Finalise weighted XIRR and clean up accumulators
+    _merged.forEach(function(h){
+      h.xirrFrac    = h._xCmv>0 ? h._xWt/h._xCmv : (h._xCmv===0 && h.xirrFrac==null ? null : h.xirrFrac);
+      h.bmxirrFrac  = h._bCmv>0 ? h._bWt/h._bCmv : (h._bCmv===0 && h.bmxirrFrac==null ? null : h.bmxirrFrac);
+      delete h._xWt; delete h._xCmv; delete h._bWt; delete h._bCmv;
+    });
+    rows=_merged;
+
     var _hasCr=(col.invCr>=0||col.cmvCr>=0||col.glCr>=0);
     var _hasLk=(col.invLk>=0||col.mvLk>=0||col.glLk>=0);
     _unitHint = _hasCr?'Cr':(_hasLk?'L':'auto');   // display unit = the unit the base file is written in
@@ -591,7 +668,7 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     }
 
     /* ---- ASSET ALLOCATION (asset -> product -> grand) ---- */
-    var assetOrder=["Equity","Hybrid","Debt"];
+    var assetOrder=["Equity","Debt","Hybrid","Commodity","REITs/InvITs"];
     var aMap={}; // asset -> {inv,cmv, prods:{prod:{inv,cmv}}}
     rows.forEach(function(h){
       var a=h.asset||"Equity"; var p=h.product||"Mutual Funds";
@@ -613,9 +690,20 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     aaRows.push({level:"grand",label:"Grand Total",inv:totalInv,cmv:totalCMV,pct:100});
     var assetPie = presentAssets.map(function(a){ return {name:a,value:aMap[a].cmv/totalCMV*100}; });
 
-    /* ---- liquidity pie ---- */
-    var liq={"Open Ended":0,"Close Ended":0};
-    rows.forEach(function(h){ liq[liquidityClass(h.product,h.category)] += h.cmvCr; });
+    /* ---- liquidity pie ----
+       If the base file has a "Liquidity" column, use those values directly (grouped by whatever
+       labels the user provides). Otherwise fall back to the rule-based liquidityClass(). */
+    var _hasLiqCol = rows.some(function(h){ return h.liquidity; });
+    var liq={};
+    if(_hasLiqCol){
+      rows.forEach(function(h){
+        var label = h.liquidity || liquidityClass(h.product,h.category);
+        liq[label]=(liq[label]||0)+h.cmvCr;
+      });
+    } else {
+      liq={"Open Ended":0,"Close Ended":0};
+      rows.forEach(function(h){ liq[liquidityClass(h.product,h.category)] += h.cmvCr; });
+    }
     var liqPie=[]; Object.keys(liq).forEach(function(k){ if(liq[k]>0) liqPie.push({name:k,value:liq[k]/totalCMV*100}); });
 
     /* ---- AMC ALLOCATION (MF book only) ---- */
@@ -658,13 +746,13 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
           outRows.push({level:"asset",label:a,inv:A.inv,cmv:A.cmv,gl:A.gl,
             alloc:A.cmv/ctot*100, xirr:(_va&&_va.f!=null)?_va.f*100:(A.cmv?A.wx/A.cmv*100:null), bmxirr:(_va&&_va.b!=null)?_va.b*100:(A.cmv?A.wb/A.cmv*100:null)});
           gx+=A.wx; gb+=A.wb;
-          Object.keys(A.prods).forEach(function(p){
+          Object.keys(A.prods).sort(function(x,y){return A.prods[y].cmv-A.prods[x].cmv;}).forEach(function(p){
             var P=A.prods[p];
             var _vp=irrAgg(cn,a,p);
             outRows.push({level:"product",label:p,inv:P.inv,cmv:P.cmv,gl:P.gl,
               alloc:P.cmv/ctot*100, xirr:(_vp&&_vp.f!=null)?_vp.f*100:(P.cmv?P.wx/P.cmv*100:null), bmxirr:(_vp&&_vp.b!=null)?_vp.b*100:(P.cmv?P.wb/P.cmv*100:null)});
             P.items.sort(function(x,y){return y.cmvCr-x.cmvCr;}).forEach(function(h){
-              outRows.push({level:"item",label:h.name,inv:h.invCr,cmv:h.cmvCr,gl:h.glCr,
+              outRows.push({level:"item",label:h.name,dist:h.distributor||"—",inv:h.invCr,cmv:h.cmvCr,gl:h.glCr,
                 alloc:h.cmvCr/ctot*100,
                 xirr:(h.xirrFrac!=null?h.xirrFrac*100:null),
                 bmxirr:(h.bmxirrFrac!=null?h.bmxirrFrac*100:null)});
@@ -925,6 +1013,21 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     if (dupCats.length){
       obs.push("Multiple schemes share the same sub-category ("+dupCats.map(function(c){return c+" ×"+catCount[c];}).join(", ")+"); consolidating same-strategy funds would reduce redundancy without materially changing exposure.");
     }
+    // unmatched / unlisted instruments — confirm presence in structural sections
+    // NOTE: unmatched instruments ARE included in asset allocation, liquidity, distributor/client
+    // allocation, holding sheets, and IRR calculations. They are excluded only from the
+    // performance and analytics screens (no reference data available).
+    if (unmatched.length){
+      var unmRows = rows.filter(function(h){ return unmatchedSet[h.name]; });
+      var unmCMV  = unmRows.reduce(function(s,h){ return s+h.cmvCr; }, 0);
+      var unmPct  = totalCMV ? unmCMV/totalCMV*100 : 0;
+      obs.push(unmatched.length+" holding"+(unmatched.length>1?"s":"")+" — "+unmatched.join(", ")+" — "+
+        (unmatched.length>1?"are":"is")+" not mapped to reference data ("+pct2(unmPct)+" of portfolio CMV). "+
+        (unmatched.length>1?"These instruments are":"This instrument is")+
+        " fully reflected in all allocation, liquidity, and holding sheets but excluded from the performance and analytics screens; "+
+        "return attribution for "+(unmatched.length>1?"these positions":"this position")+
+        " should be tracked separately.");
+    }
     // rebalancing (always-on closing note)
     obs.push("Periodic rebalancing is recommended to keep the allocation aligned with the family's objectives, risk profile and prevailing market conditions.");
 
@@ -1089,8 +1192,8 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     (function(){
       var s = base("Asset Allocation");
       var kx=0.18, kw=2.14, kg=0.12;
-      kpi(s,kx,1.06,kw,model.unit.m(model.totalCMV),"Current Market Value");
-      kpi(s,kx+(kw+kg),1.06,kw,model.unit.m(model.totalInv),"Invested Value");
+      kpi(s,kx,1.06,kw,model.unit.m(model.totalInv),"Invested Value");
+      kpi(s,kx+(kw+kg),1.06,kw,model.unit.m(model.totalCMV),"Current Market Value");
       kpi(s,kx+2*(kw+kg),1.06,kw,model.unit.m(model.totalGL),"Total Gain / Loss");
       sectionLabel(s,"Allocation by Asset Class & Product",0.18,1.98,6.6);
       var head=[cell("Asset Class",{bold:true,color:"FFFFFF",fill:{color:C.black},align:"center"}),
@@ -1115,8 +1218,10 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
         {x:7.05,y:1.4,w:6.2,h:2.4,chartColors:[C.tan,C.greyM,C.gold,"808080"],showPercent:true,showLegend:true,legendPos:"b",legendFontFace:F,legendColor:C.black,legendFontSize:9,dataLabelFontFace:F,dataLabelColor:"FFFFFF",dataLabelFontSize:10,dataLabelFontBold:true});
       s.addShape(pptx.ShapeType.roundRect,{x:7.0,y:4.02,w:6.33,h:2.62,rectRadius:0.04,fill:{color:"FBF7F1"},line:{color:C.greyL,width:0.75}});
       s.addText("Liquidity / Structure",{x:7.1,y:4.12,w:6.1,h:0.3,fontFace:F,fontSize:11,bold:true,align:"center",color:C.black});
+      var liqPalette=[C.gold,C.greyM,"8C6B43","D9D9D9","DBC8B2","808080","C9A876"];
+      var liqColors=model.liqPie.map(function(_,i){return liqPalette[i%liqPalette.length];});
       s.addChart(pptx.ChartType.pie,[{name:"Liquidity",labels:model.liqPie.map(function(a){return a.name;}),values:model.liqPie.map(function(a){return Math.round(a.value*100)/100;})}],
-        {x:7.05,y:4.42,w:6.2,h:2.1,chartColors:[C.gold,C.greyM],showPercent:true,showLegend:true,legendPos:"b",legendFontFace:F,legendColor:C.black,legendFontSize:9,dataLabelFontFace:F,dataLabelColor:"FFFFFF",dataLabelFontSize:10,dataLabelFontBold:true});
+        {x:7.05,y:4.42,w:6.2,h:2.1,chartColors:liqColors,showPercent:true,showLegend:true,legendPos:"b",legendFontFace:F,legendColor:C.black,legendFontSize:9,dataLabelFontFace:F,dataLabelColor:"FFFFFF",dataLabelFontSize:10,dataLabelFontBold:true});
       insight(s, INS.asset, 0.18, 5.95, 6.6, 0.92);
       foot(s,"*Portfolio as on "+model.meta.asOnDate+".");
     })();
@@ -1183,6 +1288,7 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     model.clients.forEach(function(cl){
       var hh={bold:true,color:"FFFFFF",fill:{color:C.black},align:"right",fontSize:8};
       var head=[cell("Instrument Name",{bold:true,color:"FFFFFF",fill:{color:C.black},fontSize:8}),
+        cell("Distributor",{bold:true,color:"FFFFFF",fill:{color:C.black},fontSize:8}),
         cell("Invested Value ("+model.unit.lab+")",hh),
         cell("Current Market Value ("+model.unit.lab+")",hh),
         cell("Total Gain/Loss ("+model.unit.lab+")",hh),
@@ -1196,7 +1302,9 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
         var lbl = (r.level==="item"?"   ":"")+r.label;
         function mc(v){ var t=model.unit.t(v); return cell(t,{align:"right",fill:{color:fill},color: (!num(v)&&v<0)?C.red:fg, bold:bold}); }
         function pc(v){ var t=num(v)?"—":(Math.round(v*100)/100).toFixed(2)+"%"; return cell(t,{align:"right",fill:{color:fill},color:fg,bold:bold}); }
-        return [cell(lbl,{fill:{color:fill},color:fg,bold:bold}),mc(r.inv),mc(r.cmv),mc(r.gl),pc(r.alloc),pc(r.xirr),pc(r.bmxirr)];
+        return [cell(lbl,{fill:{color:fill},color:fg,bold:bold}),
+          cell(r.dist||"",{fill:{color:fill},color:fg,bold:bold,fontSize:8}),
+          mc(r.inv),mc(r.cmv),mc(r.gl),pc(r.alloc),pc(r.xirr),pc(r.bmxirr)];
       }
       var grandRow = cl.rows.filter(function(r){return r.level==="grand";})[0];
       var itemRows = cl.rows.filter(function(r){return r.level!=="grand";});
@@ -1207,7 +1315,7 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
         var s=base("Portfolio Holdings - "+cl.name + (pages>1?" (cont. "+(p+1)+"/"+pages+")":""));
         var chunk=[head].concat(itemRows.slice(p*per,(p+1)*per).map(rowCells));
         if (grandRow) chunk.push(rowCells(grandRow));   // Grand Total repeated on every page
-        s.addTable(chunk,{x:0.18,y:1.12,w:12.97,colW:[4.27,1.5,1.95,1.7,1.15,1.2,1.2],
+        s.addTable(chunk,{x:0.18,y:1.12,w:12.97,colW:[3.2,1.3,1.5,1.97,1.5,1.1,1.2,1.2],
           rowH:0.34,fontFace:F,fontSize:8.5,valign:"middle",border:{type:"solid",color:"D9D9D9",pt:0.5}});
         if (gl) insight(s, gl, 0.18, 6.18, 12.97, 0.5);
         foot(s,"*Allocation re-based to "+cl.name+"'s portfolio (CMV "+model.unit.m(cl.totalCMV)+"). "+(model.irrActive?("XIRR/BMXIRR transaction-based (as on "+model.irrAsOn+")."):"XIRR/BMXIRR are CMV-weighted.")+" Portfolio as on "+model.meta.asOnDate+".");
@@ -1308,7 +1416,7 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
           } else {
             var r=o.fund;
             var line=[cell(r.name,{fontSize:7.5})];
-            line.push(cell(r.inception||"—",{align:"center",fontSize:7.5}));
+            line.push(cell(isoToDMY(r.inception||"—"),{align:"center",fontSize:7.5}));
             line.push(cell(num(r.aum)?"—":Math.round(r.aum).toLocaleString("en-IN"),{align:"right",fontSize:7.5}));
             cols.forEach(function(cc){ var v=(r.r||{})[cc]; var t=num(v)?"—":(Math.round(v*100)/100).toFixed(2); line.push(cell(t,{align:"right",color:(!num(v)&&v<0)?C.red:C.black,fontSize:7.5})); });
             if (bk.mcap){ ["Large","Mid","Small","Others"].forEach(function(mk){ var v=(r.mcap||{})[mk]; line.push(cell(num(v)?"—":(Math.round(v*100)/100).toFixed(2),{align:"right",fontSize:7.5})); }); }
@@ -1412,9 +1520,9 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
 
     /* 4. per-client */
     model.clients.forEach(function(cl){
-      var ch=[["Instrument Name","Invested Value ("+model.unit.lab+")","Current Market Value ("+model.unit.lab+")","Total Gain/Loss ("+model.unit.lab+")","Allocation (%)","XIRR (%)","BMXIRR (%)"]];
-      cl.rows.forEach(function(r){ ch.push([(r.level==="item"?"   ":"")+r.label,model.unit.v(r.inv),model.unit.v(r.cmv),model.unit.v(r.gl),r.alloc,r.xirr,r.bmxirr]); });
-      aoa(cl.name,ch,{cols:[{wch:46},{wch:18},{wch:24},{wch:20},{wch:14},{wch:12},{wch:12}],fmt:{1:FMT_CR,2:FMT_CR,3:FMT_CR,4:'0.00"%"',5:'0.00"%"',6:'0.00"%"'}});
+      var ch=[["Instrument Name","Distributor","Invested Value ("+model.unit.lab+")","Current Market Value ("+model.unit.lab+")","Total Gain/Loss ("+model.unit.lab+")","Allocation (%)","XIRR (%)","BMXIRR (%)"]];
+      cl.rows.forEach(function(r){ ch.push([(r.level==="item"?"   ":"")+r.label,r.dist||"",model.unit.v(r.inv),model.unit.v(r.cmv),model.unit.v(r.gl),r.alloc,r.xirr,r.bmxirr]); });
+      aoa(cl.name,ch,{cols:[{wch:46},{wch:22},{wch:18},{wch:24},{wch:20},{wch:14},{wch:12},{wch:12}],fmt:{2:FMT_CR,3:FMT_CR,4:FMT_CR,5:'0.00"%"',6:'0.00"%"',7:'0.00"%"'}});
     });
 
     /* 5. Equity Analytics */
@@ -1463,7 +1571,7 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
           if (bk.debt)["YTM","AvgMat","ModDur"].forEach(function(){row.push("—");});
           pf.push(row); }
         else {
-          var line=[r.name,r.inception||"—",num(r.aum)?"—":Math.round(r.aum)];
+          var line=[r.name,isoToDMY(r.inception||"—"),num(r.aum)?"—":Math.round(r.aum)];
           cols.forEach(function(cc){ var v=(r.r||{})[cc]; line.push(num(v)?"—":Math.round(v*100)/100); });
           if (bk.mcap)["Large","Mid","Small","Others"].forEach(function(mk){ var v=(r.mcap||{})[mk]; line.push(num(v)?"—":Math.round(v*100)/100); });
           if (bk.debt)["YTM","AvgMat","ModDur"].forEach(function(dk){ var v=(r.debt||{})[dk]; line.push(num(v)?"—":Math.round(v*100)/100); });
@@ -1682,6 +1790,69 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     return {mode:"unknown"};
   }
 
+  /* ---- Additional Debt Analytics — simple per-instrument format ----
+     Columns: Instrument Name | % Allocation | Rating | Issuer
+     Each row = one bond/NCD holding (name must match base file). Multiple rows may share
+     the same Instrument Name to describe multi-tranche holdings (weights are summed and
+     normalised). The result is merged into DEBT_ANALYTICS so these instruments contribute
+     to the debt analytics screens exactly like fund-level debt breakdowns. */
+  function parseAdditionalDebt(aoa){
+    var out={};
+    for(var i=1;i<aoa.length;i++){
+      var r=aoa[i]||[];
+      var nm=clean(r[0]); if(!nm) continue;
+      var pct=num(r[1]); if(pct==null||pct<=0) pct=100;  // treat blank % as 100%
+      var rating=ratingBucket("",clean(r[2])||"Unrated",clean(r[3])||"");
+      var issuer=clean(r[3])||nm;
+      var d=out[nm]||(out[nm]={sector:{},rating:{},issuer:{},total:0});
+      d.rating[rating]=(d.rating[rating]||0)+pct;
+      d.issuer[issuer]=(d.issuer[issuer]||0)+pct;
+      d.total+=pct;
+    }
+    Object.keys(out).forEach(function(nm){
+      var d=out[nm], t=d.total||100;
+      Object.keys(d.rating).forEach(function(k){ d.rating[k]=r4(d.rating[k]/t*100); });
+      var issArr=Object.keys(d.issuer).sort(function(a,b){return (d.issuer[b]||0)-(d.issuer[a]||0);}).slice(0,30);
+      var io={}; issArr.forEach(function(k){ io[k]=r4(d.issuer[k]/t*100); }); d.issuer=io;
+      d.weight=r4(t); delete d.total;
+    });
+    return out;
+  }
+
+  /* ---- PMS / AIF Client SOA holdings format ----
+     Columns: Product Category | Scheme Name | Company Name | Corrected Name | Holding(%) | Sector | ISIN | SEBI Mcap
+     Groups holdings by Scheme Name and produces EQUITY_ANALYTICS entries. */
+  function parseSOA(aoa){
+    var maxH=0;
+    for(var i=1;i<aoa.length;i++){ var v=num((aoa[i]||[])[4]); if(v!=null&&v>maxH)maxH=v; }
+    var scale=(maxH<=1.5)?100:1;  // normalise fraction→percent if needed
+    var out={};
+    for(var i=1;i<aoa.length;i++){
+      var r=aoa[i]||[];
+      var scheme=clean(r[1]); if(!scheme) continue;
+      var company=clean(r[3])||clean(r[2]); if(!company) continue;
+      var hold=num(r[4]); if(hold==null||hold<=0) continue;
+      hold*=scale;
+      var sector=clean(r[5])||"Others";
+      var mcap=clean(r[7])||"Others";
+      var d=out[scheme]||(out[scheme]={mcap:{},sector:{},stocks:[],total:0});
+      d.mcap[mcap]=(d.mcap[mcap]||0)+hold;
+      if(!isCash(company)){
+        d.sector[sector]=(d.sector[sector]||0)+hold;
+        d.stocks.push([company,r4(hold),mcap]);
+      }
+      d.total+=hold;
+    }
+    Object.keys(out).forEach(function(s){
+      var d=out[s], t=d.total||1;
+      Object.keys(d.mcap).forEach(function(k){ d.mcap[k]=r4(d.mcap[k]/t*100); });
+      Object.keys(d.sector).forEach(function(k){ d.sector[k]=r4(d.sector[k]/t*100); });
+      d.stocks=d.stocks.sort(function(a,b){return b[1]-a[1];}).slice(0,30).map(function(x){return [x[0],r4(x[1]/t*100),x[2]];});
+      d.weight=r4(t); delete d.total;
+    });
+    return out;
+  }
+
   /* ---- SIF Monitor performance (single sheet; limited returns; no market cap) ---- */
   function parseSIF(sheetNames, getAOA){
     var SIF_PERF={}, dataDate="";
@@ -1736,7 +1907,7 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     return {fund:fund, bench:bench, date:maxd};
   }
 
-  ENGINE.parsers = {parseEquitySide:parseEquitySide, parseDebtSide:parseDebtSide, parseMonitor:parseMonitor, parseSIF:parseSIF, parsePMS:parsePMS, parseIRR:parseIRR, fmtDate:fmtDate};
+  ENGINE.parsers = {parseEquitySide:parseEquitySide, parseDebtSide:parseDebtSide, parseMonitor:parseMonitor, parseSIF:parseSIF, parsePMS:parsePMS, parseIRR:parseIRR, fmtDate:fmtDate, parseAdditionalDebt:parseAdditionalDebt, parseSOA:parseSOA};
   if (typeof module!=="undefined" && module.exports){ module.exports = ENGINE.parsers; }
 })(typeof window!=="undefined" ? window : globalThis);
 
@@ -1827,17 +1998,31 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
             else if(p.date){ var pm=/(\d{4})[- ]([A-Za-z]{3,})[- ](\d{1,2})/.exec(p.date); activeRef.DATA_DATES.performance = pm?(pm[3]+' '+pm[2].slice(0,3)+' '+pm[1]):p.date; }
             st.textContent='Uploaded: '+f.name+' — '+Object.keys(p.MF_PERF).length+' schemes';
           } else if(kind==='bonds'){
-            var d=E.parsers.parseDebtSide(get(names[0]));
-            if(!Object.keys(d).length) throw new Error('no debt schemes recognised');
+            // Detect format: simple per-instrument (Instrument Name | % Allocation | Rating | Issuer)
+            // vs full analytics sheet (MF Monitor debt side)
+            var firstRow=(get(names[0])[0]||[]).map(function(x){return String(x||'').toLowerCase();}).join('|');
+            var isSimple = firstRow.indexOf('instrument')>=0 && firstRow.indexOf('rating')>=0 && firstRow.indexOf('issuer')>=0;
+            var d = isSimple ? E.parsers.parseAdditionalDebt(get(names[0])) : E.parsers.parseDebtSide(get(names[0]));
+            if(!Object.keys(d).length) throw new Error('no debt/bond instruments recognised — check the column headers match the template');
             Object.keys(d).forEach(function(k){ activeRef.DEBT_ANALYTICS[k]=d[k]; });
-            st.textContent='Uploaded: '+f.name+' — '+Object.keys(d).length+' debt/bond schemes merged into debt analytics';
+            st.textContent='Uploaded: '+f.name+' — '+Object.keys(d).length+' '+(isSimple?'bond/NCD instruments':'debt schemes')+' merged into debt analytics';
           } else if(kind==='pms'){
-            var pp=E.parsers.parsePMS(names,get);
-            if(pp.mode==='performance'){ if(pp.PMS_PERF)activeRef.PMS_PERF=pp.PMS_PERF; if(pp.AIF_PERF)activeRef.AIF_PERF=pp.AIF_PERF;
-              st.textContent='Uploaded: '+f.name+' — PMS '+(pp.PMS_PERF?Object.keys(pp.PMS_PERF).length:0)+', AIF '+(pp.AIF_PERF?Object.keys(pp.AIF_PERF).length:0);
-            } else if(pp.mode==='holdings'){ Object.keys(pp.EQUITY_ANALYTICS).forEach(function(k){ activeRef.EQUITY_ANALYTICS[k]=pp.EQUITY_ANALYTICS[k]; });
-              st.textContent='Uploaded: '+f.name+' — '+Object.keys(pp.EQUITY_ANALYTICS).length+' PMS holdings';
-            } else throw new Error('unrecognised PMS format (expected PMS/AIF performance sheets or a holdings sheet)');
+            // Detect SOA format: Product Category | Scheme Name | Company Name | Corrected Name | Holding(%) | Sector | ISIN | SEBI Mcap
+            var firstRowPMS=(get(names[0])[0]||[]).map(function(x){return String(x||'').toLowerCase();}).join('|');
+            var isSOA = firstRowPMS.indexOf('product category')>=0 && firstRowPMS.indexOf('corrected name')>=0;
+            if(isSOA){
+              var soaData=E.parsers.parseSOA(get(names[0]));
+              if(!Object.keys(soaData).length) throw new Error('no PMS/AIF schemes recognised — check the column headers match the template');
+              Object.keys(soaData).forEach(function(k){ activeRef.EQUITY_ANALYTICS[k]=soaData[k]; });
+              st.textContent='Uploaded: '+f.name+' — '+Object.keys(soaData).length+' PMS/AIF schemes merged into equity analytics';
+            } else {
+              var pp=E.parsers.parsePMS(names,get);
+              if(pp.mode==='performance'){ if(pp.PMS_PERF)activeRef.PMS_PERF=pp.PMS_PERF; if(pp.AIF_PERF)activeRef.AIF_PERF=pp.AIF_PERF;
+                st.textContent='Uploaded: '+f.name+' — PMS '+(pp.PMS_PERF?Object.keys(pp.PMS_PERF).length:0)+', AIF '+(pp.AIF_PERF?Object.keys(pp.AIF_PERF).length:0);
+              } else if(pp.mode==='holdings'){ Object.keys(pp.EQUITY_ANALYTICS).forEach(function(k){ activeRef.EQUITY_ANALYTICS[k]=pp.EQUITY_ANALYTICS[k]; });
+                st.textContent='Uploaded: '+f.name+' — '+Object.keys(pp.EQUITY_ANALYTICS).length+' PMS holdings';
+              } else throw new Error('unrecognised PMS format (expected PMS/AIF performance sheets, a holdings sheet, or Client SOA)');
+            }
           } else if(kind==='sif'){
             var ps=E.parsers.parseSIF(names,get);
             if(!Object.keys(ps.SIF_PERF).length) throw new Error('no SIF schemes recognised');
@@ -1868,6 +2053,55 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
   refUpload('up-mon','rs-mon','mon'); refUpload('up-pms','rs-pms','pms'); refUpload('up-bonds','rs-bonds','bonds');
   refUpload('up-sif','rs-sif','sif'); refUpload('up-dir','rs-dir','dir');
   refUpload('up-irr','rs-irr','irr');
+  // × reset handlers — restores activeRef component to embedded defaults
+  function resetRef(kind,statusId,defaultText){
+    var dc=function(x){ return JSON.parse(JSON.stringify(x||{})); };
+    var st=document.getElementById(statusId);
+    var clearInput=function(id){ var el=document.getElementById(id); if(el) el.value=''; };
+    if(kind==='mon'){
+      activeRef.MF_PERF=dc(REF.MF_PERF); activeRef.BENCH_RET=dc(REF.BENCH_RET||{});
+      if(activeRef.DATA_DATES) activeRef.DATA_DATES.performance=(REF.DATA_DATES||{}).performance||'';
+      clearInput('up-mon');
+    } else if(kind==='pms'){
+      activeRef.PMS_PERF=dc(REF.PMS_PERF); activeRef.AIF_PERF=dc(REF.AIF_PERF);
+      activeRef.EQUITY_ANALYTICS=dc(REF.EQUITY_ANALYTICS); clearInput('up-pms');
+    } else if(kind==='bonds'){
+      activeRef.DEBT_ANALYTICS=dc(REF.DEBT_ANALYTICS); clearInput('up-bonds');
+    } else if(kind==='sif'){
+      activeRef.SIF_PERF={}; if(activeRef.DATA_DATES) delete activeRef.DATA_DATES.sif; clearInput('up-sif');
+    } else if(kind==='dir'){
+      activeRef.MF_PERF_DIRECT={}; if(activeRef.DATA_DATES) delete activeRef.DATA_DATES.direct; clearInput('up-dir');
+    } else if(kind==='irr'){
+      activeRef.IRR=null; clearInput('up-irr');
+    } else if(kind==='mkt'){
+      if(typeof MARKET_UPDATE_IMAGES!=='undefined') activeRef.MARKET_UPDATE_IMAGES=MARKET_UPDATE_IMAGES.slice();
+      clearInput('up-mkt');
+    }
+    if(st){ st.textContent=defaultText; st.className='refstatus'; }
+    if(currentRows) loadModel();
+  }
+  document.getElementById('clr-mon').onclick=function(){ resetRef('mon','rs-mon','Embedded default'); };
+  document.getElementById('clr-pms').onclick=function(){ resetRef('pms','rs-pms','Embedded default'); };
+  document.getElementById('clr-bonds').onclick=function(){ resetRef('bonds','rs-bonds','Embedded default'); };
+  document.getElementById('clr-sif').onclick=function(){ resetRef('sif','rs-sif','Not uploaded'); };
+  document.getElementById('clr-dir').onclick=function(){ resetRef('dir','rs-dir','Not uploaded'); };
+  document.getElementById('clr-irr').onclick=function(){ resetRef('irr','rs-irr','Not uploaded'); };
+  document.getElementById('clr-mkt').onclick=function(){ resetRef('mkt','rs-mkt','Embedded default'); };
+  // Template download helper — generates a minimal .xlsx with header row only
+  function dlTemplate(filename, cols){
+    var wb=XLSX.utils.book_new();
+    var ws=XLSX.utils.aoa_to_sheet([cols]);
+    // Style header cells gold background
+    cols.forEach(function(_,i){
+      var addr=XLSX.utils.encode_cell({r:0,c:i});
+      if(!ws[addr]) return;
+      ws[addr].s={fill:{fgColor:{rgb:"BD9568"}},font:{bold:true,color:{rgb:"FFFFFF"}}};
+    });
+    XLSX.utils.book_append_sheet(wb,ws,'Sheet1');
+    XLSX.writeFile(wb,filename);
+  }
+  document.getElementById('tpl-bonds').onclick=function(){ dlTemplate('Debt_Analytics_Template.xlsx',['Instrument Name','% Allocation','Rating','Issuer']); };
+  document.getElementById('tpl-pms').onclick=function(){ dlTemplate('PMS_AIF_SOA_Template.xlsx',['Product Category','Scheme Name','Company Name','Corrected Name','Holding(%)','Sector','ISIN','SEBI Mcap']); };
   function deriveFamily(fn,rows){
     var m=/Portfolio Update[_ ]+(?:Mr\.?|Mrs\.?|Ms\.?)?\s*(.*?Family)/i.exec(fn||'');
     if(m) return m[1].replace(/[._]/g,' ').trim();
@@ -1895,6 +2129,8 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
   }
   function pe(v){ return (v==null||isNaN(v))?'—':(Math.round(v*100)/100).toFixed(2)+'%'; }
   function ce(v){ return (v==null||isNaN(v))?'—':(Math.round(v*100)/100).toFixed(2); }
+  // Convert stored ISO inception date YYYY-MM-DD → DD-MM-YYYY for display
+  function isoToDMY(s){ if(!s||s==='—') return s||'—'; var m=String(s).match(/^(\d{4})-(\d{2})-(\d{2})$/); return m?m[3]+'-'+m[2]+'-'+m[1]:s; }
   function neg(v){ return (v!=null&&!isNaN(v)&&v<0)?' class="neg"':''; }
 
   function renderAsset(){
@@ -1904,8 +2140,8 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       return '<tr class="'+cls+'"><td>'+r.label+'</td><td>'+m.unit.t(r.inv)+'</td><td>'+m.unit.t(r.cmv)+'</td><td>'+r.pct.toFixed(2)+'%</td></tr>';
     }).join('');
     s.innerHTML='<div class="card"><div class="kpis">'+
-      '<div class="kpi"><div class="v">'+m.unit.m(m.totalCMV)+'</div><div class="l">Current Market Value</div></div>'+
       '<div class="kpi"><div class="v">'+m.unit.m(m.totalInv)+'</div><div class="l">Invested</div></div>'+
+      '<div class="kpi"><div class="v">'+m.unit.m(m.totalCMV)+'</div><div class="l">Current Market Value</div></div>'+
       '<div class="kpi"><div class="v"'+neg(m.totalGL)+'>'+m.unit.m(m.totalGL)+'</div><div class="l">Total Gain/Loss</div></div>'+
       '<div class="kpi"><div class="v">'+m.holdings.length+'</div><div class="l">Holdings</div></div>'+
       '<div class="kpi"><div class="v">'+m.clients.length+'</div><div class="l">Clients</div></div></div></div>'+
@@ -1915,7 +2151,8 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       '<div class="pc"><h4>Liquidity / Structure</h4><div class="chartbox"><canvas id="pieLiq"></canvas></div></div></div></div></div></div>';
     var pal=['#DBC8B2','#BFBFBF','#BD9568','#808080','#8C6B43'];
     charts.push(new Chart(document.getElementById('pieAsset'),{type:'pie',data:{labels:m.assetPie.map(function(a){return a.name;}),datasets:[{data:m.assetPie.map(function(a){return +a.value.toFixed(2);}),backgroundColor:pal}]},options:pieOpts()}));
-    charts.push(new Chart(document.getElementById('pieLiq'),{type:'pie',data:{labels:m.liqPie.map(function(a){return a.name;}),datasets:[{data:m.liqPie.map(function(a){return +a.value.toFixed(2);}),backgroundColor:['#BD9568','#BFBFBF']}]},options:pieOpts()}));
+    var _liqPal=['#BD9568','#BFBFBF','#8C6B43','#D9D9D9','#DBC8B2','#808080','#C9A876'];
+    charts.push(new Chart(document.getElementById('pieLiq'),{type:'pie',data:{labels:m.liqPie.map(function(a){return a.name;}),datasets:[{data:m.liqPie.map(function(a){return +a.value.toFixed(2);}),backgroundColor:m.liqPie.map(function(_,i){return _liqPal[i%_liqPal.length];})}]},options:pieOpts()}));
   }
   function ratingOpts(){ return {responsive:true,maintainAspectRatio:false,cutout:'52%',layout:{padding:8},
     plugins:{legend:{position:'right',labels:{font:{family:'Cambria',size:11},boxWidth:12}},
@@ -1951,10 +2188,11 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     model.clients.forEach(function(cl){
       var rows=cl.rows.map(function(r){
         var cls=r.level==='asset'?'lvl-asset':(r.level==='product'?'lvl-product':(r.level==='grand'?'lvl-grand':'lvl-item'));
-        return '<tr class="'+cls+'"><td>'+r.label+'</td><td'+neg(r.inv)+'>'+model.unit.t(r.inv)+'</td><td'+neg(r.cmv)+'>'+model.unit.t(r.cmv)+'</td><td'+neg(r.gl)+'>'+model.unit.t(r.gl)+'</td><td>'+pe(r.alloc)+'</td><td>'+pe(r.xirr)+'</td><td>'+pe(r.bmxirr)+'</td></tr>';
+        var distCell = r.level==='item' ? '<td>'+(r.dist||'—')+'</td>' : '<td></td>';
+        return '<tr class="'+cls+'"><td>'+r.label+'</td>'+distCell+'<td'+neg(r.inv)+'>'+model.unit.t(r.inv)+'</td><td'+neg(r.cmv)+'>'+model.unit.t(r.cmv)+'</td><td'+neg(r.gl)+'>'+model.unit.t(r.gl)+'</td><td>'+pe(r.alloc)+'</td><td>'+pe(r.xirr)+'</td><td>'+pe(r.bmxirr)+'</td></tr>';
       }).join('');
       html+='<div class="card"><h3>Portfolio Holdings — '+cl.name+'</h3><div class="sub">Allocation re-based to this client (CMV '+model.unit.m(cl.totalCMV)+'). '+(model.irrActive?('XIRR/BMXIRR transaction-based (as on '+model.irrAsOn+').'):'XIRR/BMXIRR CMV-weighted.')+'</div>'+
-        '<table class="cz"><tr><th>Instrument Name</th><th>Invested Value ('+model.unit.lab+')</th><th>Current Market Value ('+model.unit.lab+')</th><th>Total Gain/Loss ('+model.unit.lab+')</th><th>Allocation %</th><th>XIRR %</th><th>BMXIRR %</th></tr>'+rows+'</table></div>';
+        '<table class="cz"><tr><th>Instrument Name</th><th>Distributor</th><th>Invested Value ('+model.unit.lab+')</th><th>Current Market Value ('+model.unit.lab+')</th><th>Total Gain/Loss ('+model.unit.lab+')</th><th>Allocation %</th><th>XIRR %</th><th>BMXIRR %</th></tr>'+rows+'</table></div>';
     });
     document.getElementById('s-holdings').innerHTML=html;
   }
@@ -2087,169 +2325,4 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       x.textAlign='center'; x.font='bold 11px Cambria';
       for(var c2=0;c2<k;c2++){
         var ci=idx[c2], v=ov.matrix[ri][ci], d=ri===ci, faded=(!d&&v<ovTh);
-        var cx=ox+c2*cell, cy=oy+lab+r*rowH;
-        void 0;
-        x.fillStyle=ovColH(v,d); x.fillRect(cx,cy,cell-1,rowH-1);
-        x.fillStyle=ovTxtH(v,d); x.fillText((d?'100.00':v.toFixed(2))+'%',cx+cell/2,cy+rowH/2);
-      }
-      x.fillStyle='#EDE6DA'; x.fillText(String(r+1),ox+k*cell+lab/2,oy+lab+r*rowH+rowH/2);
-    }
-    var ly=oy+lab+k*rowH+26; x.textAlign='left'; x.textBaseline='middle'; x.font='11px Cambria';
-    var lg=[['#B98C5A','Diagonal (100%)'],['#F2E9DC','< 15% low'],['#DCC4A5','15-30% moderate'],['#C49A66','30-50% high'],['#A87B45','> 50% very high']];
-    var lx=pad; lg.forEach(function(p){ x.fillStyle=p[0]; x.fillRect(lx,ly-8,15,15); x.fillStyle='#EDE6DA'; x.fillText(p[1],lx+20,ly); lx+=x.measureText(p[1]).width+52; });
-    return cv;
-  }
-  function downloadOvImage(ov){ var cv=overlapCanvas(ov); if(!cv){ alert('No funds with overlap >= the current threshold. Lower the slider.'); return; } var a=document.createElement('a'); a.href=cv.toDataURL('image/png'); a.download='Overlap Matrix_'+model.meta.familyName+'_'+model.meta.asOnDate+'.png'; a.click(); }
-  function renderPerf(){
-    var s=document.getElementById('s-perf'); var html='';
-    if(!model.performance.buckets.length){ s.innerHTML='<div class="card"><div class="empty">No performance data available.</div></div>'; document.getElementById('s-perf').innerHTML=html||s.innerHTML; return; }
-    model.performance.buckets.forEach(function(bk){
-      var cols=bk.cols.slice(); var head='<th>Scheme</th><th>Inception</th><th>AUM (Cr.)</th>'+cols.map(function(c){return '<th>'+c+'</th>';}).join('');
-      if(bk.mcap) head+='<th>Large</th><th>Mid</th><th>Small</th><th>Others</th>';
-      if(bk.debt) head+='<th>YTM</th><th>Avg Mat</th><th>Mod Dur</th>';
-      var ncol=3+cols.length+(bk.mcap?4:0)+(bk.debt?3:0);
-      var body=bk.rows.map(function(r){
-        if(r.type==='sub') return '<tr class="lvl-sub"><td colspan="'+ncol+'">'+r.label+'</td></tr>';
-        if(r.type==='bench'){ var c='<tr class="lvl-bench"><td>'+r.label+'</td><td>—</td><td>—</td>';
-          cols.forEach(function(cc){var v=(r.r||{})[cc];c+='<td>'+(v==null||isNaN(v)?'—':v.toFixed(2))+'</td>';});
-          if(bk.mcap)c+='<td>—</td><td>—</td><td>—</td><td>—</td>';
-          if(bk.debt)c+='<td>—</td><td>—</td><td>—</td>';
-          return c+'</tr>'; }
-        var line='<tr><td>'+r.name+'</td><td style="text-align:center">'+(r.inception||'—')+'</td><td>'+(r.aum==null?'—':Math.round(r.aum).toLocaleString('en-IN'))+'</td>';
-        cols.forEach(function(cc){var v=(r.r||{})[cc];line+='<td'+neg(v)+'>'+(v==null||isNaN(v)?'—':v.toFixed(2))+'</td>';});
-        if(bk.mcap)['Large','Mid','Small','Others'].forEach(function(mk){var v=(r.mcap||{})[mk];line+='<td>'+(v==null||isNaN(v)?'—':v.toFixed(2))+'</td>';});
-        if(bk.debt)['YTM','AvgMat','ModDur'].forEach(function(dk){var v=(r.debt||{})[dk];line+='<td>'+(v==null||isNaN(v)?'—':v.toFixed(2))+'</td>';});
-        return line+'</tr>';
-      }).join('');
-      html+='<div class="card"><h3>Performance Sheet — '+bk.key+'</h3><div class="sub">*Performance as on '+model.meta.dataDates.performance+'. Annualised for ≥1Y. Missing data shown as —.</div>'+
-        '<div style="overflow:auto;"><table class="cz" style="font-size:11.5px;"><tr>'+head+'</tr>'+body+'</table></div></div>';
-    });
-    var isDirect = model.performance.hasDirect && model.performance.buckets===model.performance.directList;
-    var tog = model.performance.hasDirect ? ('<div class="card" style="display:flex;align-items:center;gap:10px;padding:10px 14px;margin-bottom:8px">'+
-      '<span style="font-weight:600;color:#000">Performance plan:</span>'+
-      '<button id="plan-reg" style="padding:5px 16px;border:1px solid #BD9568;border-radius:4px;cursor:pointer;font-family:Cambria;font-size:13px;'+(!isDirect?"background:#BD9568;color:#fff":"background:#fff;color:#000")+'">Regular</button>'+
-      '<button id="plan-dir" style="padding:5px 16px;border:1px solid #BD9568;border-radius:4px;cursor:pointer;font-family:Cambria;font-size:13px;'+(isDirect?"background:#BD9568;color:#fff":"background:#fff;color:#000")+'">Direct'+(model.performance.directAsOn?" · as on "+model.performance.directAsOn:"")+'</button>'+
-      '<span style="color:#777;font-size:12px">— switch the performance sheet between Regular and Direct-plan NAVs</span></div>') : '';
-    s.innerHTML=tog+html;
-    var rb=document.getElementById('plan-reg'), db=document.getElementById('plan-dir');
-    if(rb) rb.onclick=function(){ model.performance.buckets=model.performance.regularList; renderPerf(); };
-    if(db) db.onclick=function(){ model.performance.buckets=model.performance.directList; renderPerf(); };
-  }
-
-  function renderIRR(){
-    var s=document.getElementById('s-irr'); if(!s) return;
-    if(!model.irr || !model.irrActive){
-      s.innerHTML='<div class="card"><div class="empty">No transaction-based IRR loaded. Upload an <b>IRR Transactions</b> file (a workbook with a <b>SI Xirr</b> sheet, and optionally <b>SI Bmxirr</b> for the benchmark) in the Reference data panel above.</div></div>';
-      return;
-    }
-    var lvlName=['Total Portfolio','Client','Asset','Product','Instrument'];
-    function pc(x){ if(x==null)return '<span style="color:#BFBFBF">—</span>'; var v=x*100, c=v<0?'#931621':'#000'; return '<span style="color:'+c+'">'+v.toFixed(2)+'%</span>'; }
-    function diff(f,b){ if(f==null||b==null)return '<span style="color:#BFBFBF">—</span>'; var d=(f-b)*100, c=d>=0?'#BD9568':'#931621'; return '<span style="color:'+c+';font-weight:600">'+(d>=0?'+':'')+d.toFixed(2)+'%</span>'; }
-    var body=model.irr.map(function(r){
-      var pad=10+r.level*20;
-      var bg=r.level===0?'background:#DBC8B2;':(r.level===1?'background:#EFE7DC;':'');
-      var fw=r.level<=1?'font-weight:700;':(r.level===2?'font-weight:600;':'');
-      var fs=r.level>=4?'font-size:11px;color:#333;':'';
-      return '<tr style="'+bg+'"><td style="padding-left:'+pad+'px;'+fw+fs+'">'+r.label+'</td>'+
-        '<td style="text-align:center;color:#777;font-size:11px">'+lvlName[r.level]+'</td>'+
-        '<td style="text-align:left;color:#555;font-size:11px">'+(r.benchName||'')+'</td>'+
-        '<td style="text-align:right;'+fw+'">'+pc(r.fund)+'</td>'+
-        '<td style="text-align:right">'+pc(r.bench)+'</td>'+
-        '<td style="text-align:right">'+diff(r.fund,r.bench)+'</td></tr>';
-    }).join('');
-    s.innerHTML='<div class="card"><h3>Fund IRR vs Benchmark IRR — Transaction-based XIRR</h3>'+
-      '<div class="sub">*Computed from dated cashflows (XIRR, actual/365) as on '+(model.irrAsOn||'—')+'. Hierarchy: Total Portfolio › Client › Asset › Product › Instrument. Benchmark from the SI Bmxirr sheet.</div>'+
-      '<div style="overflow:auto"><table class="cz" style="font-size:12px;width:100%;border-collapse:collapse">'+
-      '<tr><th style="text-align:left">Name</th><th style="text-align:center">Type</th><th style="text-align:left">Benchmark</th><th style="text-align:right">Fund IRR</th><th style="text-align:right">Benchmark IRR</th><th style="text-align:right">Out / Under</th></tr>'+
-      body+'</table></div></div>';
-  }
-  function barStackedOpts(){ return {responsive:true,maintainAspectRatio:false,layout:{padding:6},
-    scales:{x:{stacked:true,ticks:{font:{family:'Cambria',size:10},maxRotation:40,minRotation:0,autoSkip:false}},
-            y:{stacked:true,ticks:{font:{family:'Cambria'}},title:{display:true,text:'CMV (₹ Cr)',font:{family:'Cambria'}}}},
-    plugins:{legend:{position:'bottom',labels:{font:{family:'Cambria'}}}, datalabels:{display:'auto',color:function(ctx){var h=String(ctx.dataset.backgroundColor||'#000').replace('#','');var r=parseInt(h.substr(0,2),16)||0,g=parseInt(h.substr(2,2),16)||0,b=parseInt(h.substr(4,2),16)||0;return (0.299*r+0.587*g+0.114*b)>140?'#000':'#fff';},font:{family:'Cambria',weight:'bold',size:9},formatter:function(v,ctx){var di=ctx.dataIndex,tot=0;ctx.chart.data.datasets.forEach(function(ds){tot+=(+ds.data[di]||0);});if(!tot||v<=0)return '';var p=v/tot*100;return p>=3?p.toFixed(1)+'%':'';}},
-      tooltip:{callbacks:{label:function(c){var di=c.dataIndex,tot=0;c.chart.data.datasets.forEach(function(ds){tot+=(+ds.data[di]||0);});var p=tot?(c.parsed.y/tot*100):0;return c.dataset.label+': ₹'+(c.parsed.y||0).toFixed(2)+' Cr ('+p.toFixed(1)+'%)';}}}}}; }
-  function barStacked100Opts(){ return {responsive:true,maintainAspectRatio:false,layout:{padding:6},scales:{x:{stacked:true,ticks:{font:{family:'Cambria',size:10},maxRotation:40,minRotation:0,autoSkip:false}},y:{stacked:true,min:0,max:100,ticks:{font:{family:'Cambria'},callback:function(v){return v+'%';}},title:{display:true,text:'% of CMV',font:{family:'Cambria'}}}},plugins:{legend:{position:'bottom',labels:{font:{family:'Cambria'}}},datalabels:{display:'auto',color:function(ctx){var hh=String(ctx.dataset.backgroundColor||'#000').replace('#','');var r=parseInt(hh.substr(0,2),16)||0,g=parseInt(hh.substr(2,2),16)||0,b=parseInt(hh.substr(4,2),16)||0;return (0.299*r+0.587*g+0.114*b)>140?'#000':'#fff';},font:{family:'Cambria',weight:'bold',size:9},formatter:function(v,ctx){return v>=3?(+v).toFixed(1)+'%':'';}},tooltip:{callbacks:{label:function(c){var ds=c.dataset;var raw=(ds._raw&&ds._raw[c.dataIndex]!=null)?ds._raw[c.dataIndex]:null;var p=(c.parsed.y||0);return ds.label+': '+(raw!=null?((typeof model!=='undefined'&&model.unit?model.unit.m(raw):('₹'+(+raw).toFixed(2)+' Cr'))+' '):'')+'('+p.toFixed(1)+'%)';}}}}}; }
-  function renderAlloc(surfId, data, title, canvasId){
-    var s=document.getElementById(surfId); if(!s) return;
-    if(!data || !data.cols.length){ s.innerHTML='<div class="card"><div class="empty">No allocation data available.</div></div>'; return; }
-    var cols=data.cols;
-    function fmt(v){ v=v||0; return v?model.unit.t(v):'<span style="color:#cfc9c0">0.00</span>'; }
-    var head='<th style="text-align:left;background:#000;color:#fff">Asset Class</th>'+cols.map(function(c){return '<th style="background:#000;color:#fff">'+c+'</th>';}).join('')+'<th style="background:#000;color:#fff">Grand Total</th>';
-    var body='';
-    data.assets.forEach(function(a){
-      var at=0; var cells=cols.map(function(c){ var v=a.total[c]||0; at+=v; return '<td style="text-align:right">'+fmt(v)+'</td>'; }).join('');
-      body+='<tr style="font-weight:700;background:#D9D9D9"><td>'+a.asset+'</td>'+cells+'<td style="text-align:right">'+model.unit.t(at)+'</td></tr>';
-      a.products.forEach(function(p){
-        var pt=0; var pc=cols.map(function(c){ var v=p.vals[c]||0; pt+=v; return '<td style="text-align:right">'+fmt(v)+'</td>'; }).join('');
-        body+='<tr><td style="padding-left:20px;color:#333">'+p.product+'</td>'+pc+'<td style="text-align:right">'+model.unit.t(pt)+'</td></tr>';
-      });
-    });
-    var gt=0; var gc=cols.map(function(c){ var v=data.grand[c]||0; gt+=v; return '<td style="text-align:right">'+model.unit.t(v)+'</td>'; }).join('');
-    body+='<tr style="font-weight:700;border-top:2px solid #000;background:#000;color:#fff"><td>Grand Total</td>'+gc+'<td style="text-align:right">'+model.unit.t(gt)+'</td></tr>';
-    s.innerHTML='<div class="card"><h3>'+title+' — Asset Allocation</h3><div class="sub">*Portfolio as on '+model.meta.asOnDate+'. Current Market Value in '+model.unit.cap+'.</div>'+
-      '<div style="overflow:auto"><table class="cz" style="font-size:12px;border-collapse:collapse">'+'<tr>'+head+'</tr>'+body+'</table></div></div>'+
-      '<div class="card"><h3>Asset-class allocation across '+title.replace(' Level','').toLowerCase()+'s</h3>'+
-      '<div class="sub">Each bar = a '+title.replace(' Level','').toLowerCase()+', stacked by asset class (% of CMV).</div>'+
-      '<div class="chartbox" style="height:400px"><canvas id="'+canvasId+'"></canvas></div></div>';
-    var pal={Equity:'#DBC8B2',Hybrid:'#BFBFBF',Debt:'#BD9568',Commodity:'#808080'};
-    var fb=['#DBC8B2','#BFBFBF','#BD9568','#808080','#D9D9D9','#BD9568'];
-    var colTot=cols.map(function(c){var t=0;data.assets.forEach(function(a){t+=(+a.total[c]||0);});return t;}); var datasets=data.assets.map(function(a,i){ var raw=cols.map(function(c){return +(a.total[c]||0).toFixed(2);}); var pct=cols.map(function(c,ci){return colTot[ci]?+(((a.total[c]||0)/colTot[ci])*100).toFixed(2):0;}); return {label:a.asset, data:pct, _raw:raw, backgroundColor:pal[a.asset]||fb[i%fb.length]}; });
-    charts.push(new Chart(document.getElementById(canvasId),{type:'bar',data:{labels:cols,datasets:datasets},options:barStacked100Opts()}));
-  }
-  function renderDistAlloc(){ renderAlloc('s-distalloc', model.allocByDistributor, 'Distributor Level', 'barDistAlloc'); }
-  function renderClientAlloc(){ renderAlloc('s-clalloc', model.allocByClient, 'Client Level', 'barClientAlloc'); }
-
-  function renderObs(){
-    var s=document.getElementById('s-obs');
-    var li=model.observations.map(function(o,i){return '<li><span class="n">'+(i+1)+'</span><p>'+o+'</p></li>';}).join('');
-    s.innerHTML='<div class="card"><h3>Portfolio Observations</h3><ul class="obs">'+li+'</ul></div>';
-  }
-
-  /* ---------- downloads ---------- */
-  function triggerDownload(blob, fn){
-    var url=URL.createObjectURL(blob); var a=document.createElement('a'); a.href=url; a.download=fn;
-    document.body.appendChild(a); a.click();
-    setTimeout(function(){ try{URL.revokeObjectURL(url); a.remove();}catch(e){} },1500);
-  }
-  document.getElementById('dlppt').onclick=function(){
-    if(!model)return;
-    var Ppt=(typeof PptxGenJS!=='undefined')?PptxGenJS:(window.PptxGenJS||window.pptxgen);
-    if(!Ppt){ setStatus('PowerPoint engine not available in this browser session. Try reopening the file.',true); return; }
-    var btn=this; btn.disabled=true; var old=btn.textContent; btn.textContent='Generating…';
-    function done(){ btn.disabled=false; btn.textContent=old; }
-    try{
-      // reflect the current on-screen overlap view (selected funds + threshold) in the deck
-      model.overlapView=null;
-      if(model.overlap && model.overlap.eligible && typeof ovDisplayIdx==='function'){
-        var idx=ovDisplayIdx(model.overlap);
-        if(idx.length>=2 && idx.length<model.overlap.funds.length){
-          model.overlapView={eligible:true,funds:idx.map(function(i){return model.overlap.funds[i];}),
-            matrix:idx.map(function(ri){return idx.map(function(ci){return model.overlap.matrix[ri][ci];});})};
-        }
-      }
-      var fn='Portfolio Review_'+model.meta.familyName+'_'+model.meta.asOnDate+'.pptx';
-      var p=E.buildPPTX(model,Ppt);
-      Promise.resolve(p.write({outputType:'blob'})).then(function(blob){
-        triggerDownload(blob, fn); setStatus('PowerPoint downloaded: <b>'+fn+'</b>'); done();
-      }).catch(function(e){ setStatus('PowerPoint generation failed: '+e.message,true); console.error(e); done(); });
-    }catch(e){ setStatus('PowerPoint generation failed: '+e.message,true); console.error(e); done(); }
-  };
-  document.getElementById('dlxls').onclick=function(){
-    if(!model)return; var btn=this; btn.disabled=true; var old=btn.textContent; btn.textContent='Generating…';
-    try{ var fn='Portfolio Review_'+model.meta.familyName+'_'+model.meta.asOnDate+'.xlsx';
-      var wb=E.buildXLSX(model,XLSX); XLSX.writeFile(wb,fn); setStatus('Excel downloaded: <b>'+fn+'</b>');
-    }catch(e){ setStatus('Excel generation failed: '+e.message,true); console.error(e); }
-    btn.disabled=false; btn.textContent=old;
-  };
-})();
-</script>
-<script>(function(){
-function setLogo(d,which){ BRAND_LOGO=d; var p=document.getElementById("logoPrev"); if(p)p.src=d; var bi=document.getElementById("logoInv"),bo=document.getElementById("logoOne"); if(bi&&bo){ bi.style.background=which==="inv"?"#BD9568":"#fff"; bi.style.color=which==="inv"?"#fff":"#000"; bo.style.background=which==="one"?"#BD9568":"#fff"; bo.style.color=which==="one"?"#fff":"#000"; } }
-var bi=document.getElementById("logoInv"); if(bi) bi.onclick=function(){ setLogo(BRAND_LOGOS.invictus,"inv"); };
-var bo=document.getElementById("logoOne"); if(bo) bo.onclick=function(){ setLogo(BRAND_LOGOS.onedigital,"one"); };
-var lu=document.getElementById("logoUp"); if(lu) lu.onchange=function(e){ var f=e.target.files[0]; if(!f)return; var r=new FileReader(); r.onload=function(){ setLogo(r.result,"custom"); }; r.readAsDataURL(f); };
-var pv=document.getElementById("logoPrev"); if(pv) pv.src=BRAND_LOGO;
-var mu=document.getElementById("up-mkt"); if(mu) mu.onchange=function(e){ var fs=Array.prototype.slice.call(e.target.files); if(!fs.length)return; var out=[],done=0; fs.forEach(function(f,ix){ var r=new FileReader(); r.onload=function(){ out[ix]=r.result; if(++done===fs.length){ MARKET_UPDATE_IMAGES=out.filter(Boolean); var st=document.getElementById("rs-mkt"); if(st)st.textContent="Uploaded ("+MARKET_UPDATE_IMAGES.length+")"; } }; r.readAsDataURL(f); }); };
-})();</script>
-</body>
-</html>
+        var
