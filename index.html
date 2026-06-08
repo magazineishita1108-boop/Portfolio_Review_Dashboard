@@ -1069,7 +1069,25 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     var _uh = (opts && opts.unitHint) || (rows && rows.unitHint) || _unitHint || 'Cr';
     if (_uh==='auto') _uh = (totalCMV>=1) ? 'Cr' : 'L';   // raw-rupee-only files: pick by portfolio size
     var unit = mkUnit(_uh);
+    /* ---- Top-5 Contributors / Laggards vs benchmark (portfolio-wide, ranked by CMV) ---- */
+    var contribLag = (function(){
+      var byName={};
+      rows.forEach(function(h){
+        if(h.xirrFrac==null || h.bmxirrFrac==null || !(h.cmvCr>0)) return;
+        var k=h.name||'—';
+        var g=byName[k]||(byName[k]={name:k, cmv:0, wx:0, wb:0});
+        g.cmv+=h.cmvCr; g.wx+=h.xirrFrac*h.cmvCr; g.wb+=h.bmxirrFrac*h.cmvCr;
+      });
+      var arr=Object.keys(byName).map(function(k){
+        var g=byName[k], f=g.wx/g.cmv, b=g.wb/g.cmv;
+        return {name:g.name, cmv:g.cmv, alloc:(totalCMV?g.cmv/totalCMV*100:0), fund:f*100, bench:b*100, dev:(f-b)*100};
+      });
+      function byCmv(a,b){ return b.cmv-a.cmv; }
+      return { contributors: arr.filter(function(x){return x.dev>0;}).sort(byCmv).slice(0,5),
+               laggards:     arr.filter(function(x){return x.dev<0;}).sort(byCmv).slice(0,5) };
+    })();
     return {
+      contribLag:contribLag,
       meta:{familyName:familyName, asOnDate:asOn, dataDates:DD},
       unit:unit, totalCMV:totalCMV, totalInv:totalInv, totalGL: totalCMV-totalInv,
       holdings:rows, unmatched:unmatched,
@@ -1390,6 +1408,39 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     }
 
     (function(){ var d=(typeof DIVIDERS!=="undefined")?DIVIDERS.annexure:""; if(d){ var s=pptx.addSlide(); s.background={color:"FFFFFF"}; s.addImage({data:d,x:0,y:0,w:W,h:Hh,sizing:{type:"contain",w:W,h:Hh}}); } })();
+
+    /* ---- 5c. FUND IRR — TOP CONTRIBUTORS / LAGGARDS ---- */
+    (function(){
+      var cl=model.contribLag||{contributors:[],laggards:[]};
+      if(!cl.contributors.length && !cl.laggards.length) return;
+      var U=model.unit;
+      var sx=base('Fund IRR — Top Contributors & Laggards');
+      function pctC(v){ return (v==null||isNaN(v))?'—':v.toFixed(2)+'%'; }
+      function buildTbl(list, titleTxt, titleFill, titleColor, devColor, emptyTxt){
+        var hc=function(t,al){ return cell(t,{bold:true,color:'FFFFFF',fill:{color:'808080'},align:al,fontSize:9,valign:'middle'}); };
+        var title=[cell(titleTxt,{bold:true,color:titleColor,fill:{color:titleFill},align:'center',fontSize:11.5,colspan:6,valign:'middle'})];
+        var hdr=[hc('Instrument','left'),hc('Market Value ('+U.lab+')','center'),hc('% Allocation','center'),hc('Fund XIRR (%)','center'),hc('Benchmark XIRR (%)','center'),hc('Deviation','center')];
+        var trows=[title,hdr];
+        if(list.length){
+          list.forEach(function(x){
+            trows.push([ cell(x.name,{align:'left',fontSize:9.5,color:C.black,bold:true}),
+              cell(U.t(x.cmv),{align:'center',fontSize:9.5,color:C.black}),
+              cell(pctC(x.alloc),{align:'center',fontSize:9.5,color:C.black}),
+              cell(pctC(x.fund),{align:'center',fontSize:9.5,color:C.black}),
+              cell(pctC(x.bench),{align:'center',fontSize:9.5,color:C.black}),
+              cell(pctC(x.dev),{align:'center',fontSize:9.5,bold:true,color:devColor}) ]);
+          });
+        } else { trows.push([cell(emptyTxt,{align:'center',fontSize:9.5,color:'888888',colspan:6})]); }
+        return trows;
+      }
+      var colW=[3.7,1.6,1.55,1.55,1.75,1.15];
+      var tx=(W-11.30)/2;
+      sx.addTable(buildTbl(cl.contributors,'TOP 5 CONTRIBUTORS (As per Current Market Value)','C6E0B4','1E5631',C.green,'No holdings outperformed their benchmark.'),
+        {x:tx,y:1.20,w:11.30,colW:colW,rowH:0.34,fontFace:F,fontSize:9.5,valign:'middle',border:{type:'solid',color:C.greyL,pt:0.75}});
+      sx.addTable(buildTbl(cl.laggards,'TOP 5 LAGGARDS (As per Current Market Value)','931621','FFFFFF',C.red,'No holdings trailed their benchmark.'),
+        {x:tx,y:4.18,w:11.30,colW:colW,rowH:0.34,fontFace:F,fontSize:9.5,valign:'middle',border:{type:'solid',color:C.greyL,pt:0.75}});
+      foot(sx,'*Holdings ranked by Current Market Value. Deviation = Fund XIRR - Benchmark XIRR. '+(model.irrActive?('Transaction-based XIRR as on '+(model.irrAsOn||'—')+'.'):'XIRR/BMXIRR from the base file.')+' Portfolio as on '+model.meta.asOnDate+'.');
+    })();
 
     /* ---- 6. PERFORMANCE ---- */
     model.performance.buckets.forEach(function(bk){
@@ -2380,113 +2431,35 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
 
   function renderIRR(){
     var s=document.getElementById('s-irr'); if(!s) return;
-    if(!model.irr || !model.irrActive){
-      s.innerHTML='<div class="card"><div class="empty">No transaction-based IRR loaded. Upload an <b>IRR Transactions</b> file (a workbook with a <b>SI Xirr</b> sheet, and optionally <b>SI Bmxirr</b> for the benchmark) in the Reference data panel above.</div></div>';
+    var cl=model.contribLag||{contributors:[],laggards:[]};
+    var U=model.unit;
+    if(!cl.contributors.length && !cl.laggards.length){
+      s.innerHTML='<div class="card"><div class="empty">No Fund XIRR / Benchmark XIRR data available. Provide XIRR % and BMXIRR % in the base file (or upload an IRR Transactions file) to see portfolio contributors and laggards.</div></div>';
       return;
     }
-    function fmtP(v){ return v!=null?(v*100).toFixed(2)+'%':'—'; }
-    function devInfo(f,b){
-      if(f==null||b==null) return {str:'—',col:'#BFBFBF'};
-      var d=(f-b)*100;
-      return {str:(d>=0?'+':'')+d.toFixed(2)+'%', col:d>0?'#1B6B2E':d<0?'#931621':'#888'};
+    function pc(v){ return (v==null||isNaN(v))?'—':v.toFixed(2)+'%'; }
+    function th(t,al){ return '<th style="background:#808080;color:#fff;text-align:'+al+';padding:7px 9px;font-size:11.5px;font-weight:600;border:1px solid #6f6f6f">'+t+'</th>'; }
+    function tbl(title, list, titleBg, titleFg, devCol, emptyTxt){
+      var BD='border:1px solid #E3DCD3;';
+      var head='<tr><td colspan="6" style="background:'+titleBg+';color:'+titleFg+';font-weight:700;font-size:13.5px;text-align:center;padding:9px 10px;letter-spacing:.02em;'+BD+'">'+title+'</td></tr>'+
+        '<tr>'+th('Instrument','left')+th('Market Value ('+U.lab+')','center')+th('% Allocation','center')+th('Fund XIRR (%)','center')+th('Benchmark XIRR (%)','center')+th('Deviation','center')+'</tr>';
+      var body=list.length?list.map(function(x){
+        return '<tr>'+
+          '<td style="'+BD+'text-align:left;padding:7px 9px;font-weight:600">'+x.name+'</td>'+
+          '<td style="'+BD+'text-align:center;padding:7px 9px">'+U.t(x.cmv)+'</td>'+
+          '<td style="'+BD+'text-align:center;padding:7px 9px">'+pc(x.alloc)+'</td>'+
+          '<td style="'+BD+'text-align:center;padding:7px 9px">'+pc(x.fund)+'</td>'+
+          '<td style="'+BD+'text-align:center;padding:7px 9px">'+pc(x.bench)+'</td>'+
+          '<td style="'+BD+'text-align:center;padding:7px 9px;font-weight:700;color:'+devCol+'">'+pc(x.dev)+'</td></tr>';
+      }).join(''):'<tr><td colspan="6" style="'+BD+'text-align:center;padding:12px;color:#999">'+emptyTxt+'</td></tr>';
+      return '<table style="width:100%;border-collapse:collapse;margin-bottom:22px;border:1px solid #D9D9D9;font-family:Cambria">'+head+body+'</table>';
     }
-    function kpiBox(lbl,val,col){
-      return '<div style="flex:1;min-width:100px;background:#FBF7F1;border:0.5px solid #DBC8B2;border-radius:6px;padding:8px 12px;">'+
-        '<div style="font-size:11px;color:#888;margin-bottom:3px">'+lbl+'</div>'+
-        '<div style="font-size:17px;font-weight:700;color:'+(col||'#000')+'">'+val+'</div></div>';
-    }
-    var ctxCli='',ctxAst='',ctxPrd='';
-    var instrList=[], summaryRows=[];
-    model.irr.forEach(function(r){
-      if(r.level<4){ summaryRows.push(r); }
-      if(r.level===1) ctxCli=r.label;
-      else if(r.level===2) ctxAst=r.label;
-      else if(r.level===3) ctxPrd=r.label;
-      else if(r.level===4) instrList.push({name:r.label,fund:r.fund,bench:r.bench,benchName:r.benchName,client:ctxCli,asset:ctxAst,product:ctxPrd});
-    });
-    var cats={out:[],line:[],under:[],noB:[]};
-    instrList.forEach(function(x){
-      if(x.bench==null||x.fund==null){ cats.noB.push(x); return; }
-      var range=Math.abs(x.bench)*0.10;
-      if(x.fund>=x.bench+range) cats.out.push(x);
-      else if(x.fund<=x.bench-range) cats.under.push(x);
-      else cats.line.push(x);
-    });
-    function sortBucket(arr){ arr.sort(function(a,b){ var da=a.fund!=null&&a.bench!=null?(a.fund-a.bench):0, db=b.fund!=null&&b.bench!=null?(b.fund-b.bench):0; return db-da; }); }
-    sortBucket(cats.out); sortBucket(cats.line); sortBucket(cats.under);
-    var p0=model.irr[0]||{};
-    var pFund=p0.fund, pBench=p0.bench;
-    var pDev=devInfo(pFund,pBench);
-    var pBenchPct=pBench!=null?pBench*100:null;
-    var pRange=pBenchPct!=null?Math.abs(pBenchPct)*0.10:null;
-    var kpis='<div style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap">'+
-      kpiBox('Portfolio Fund IRR',fmtP(pFund))+
-      kpiBox('Portfolio BMIRR',fmtP(pBench))+
-      kpiBox('Out / Under',pDev.str,pDev.col)+
-      kpiBox('Outperforming',cats.out.length,'#1B6B2E')+
-      kpiBox('In Line',cats.line.length,'#BD9568')+
-      kpiBox('Underperforming',cats.under.length,'#931621')+
-      '</div>';
-    var bandHtml='';
-    if(pBenchPct!=null){
-      var lo=(pBenchPct-pRange).toFixed(2), hi=(pBenchPct+pRange).toFixed(2);
-      bandHtml='<div style="background:#FBF7F1;border:0.5px solid #DBC8B2;border-radius:6px;padding:10px 14px;margin-bottom:16px;font-size:12px;display:flex;flex-wrap:wrap;gap:12px;align-items:center;">'+
-        '<span><b>Classification bands</b></span>'+
-        '<span style="color:#555">Portfolio BMIRR: <b>'+pBenchPct.toFixed(2)+'%</b></span>'+
-        '<span style="color:#555">Range (±10% of BMIRR): <b>±'+pRange.toFixed(2)+'pp</b></span>'+
-        '<span style="color:#1B6B2E;font-weight:600">Outperformer ≥ '+hi+'%</span>'+
-        '<span style="color:#BD9568;font-weight:600">In Line: '+lo+'% – '+hi+'%</span>'+
-        '<span style="color:#931621;font-weight:600">Underperformer ≤ '+lo+'%</span>'+
-        '</div>';
-    }
-    function instrCard(x,accentCol){
-      var dev=devInfo(x.fund,x.bench);
-      return '<div style="background:#fff;border:0.5px solid #E0D8D0;border-left:3px solid '+accentCol+';border-radius:4px;padding:8px 12px;margin-bottom:5px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">'+
-        '<div style="flex:2;min-width:140px">'+
-          '<div style="font-weight:600;font-size:12.5px">'+x.name+'</div>'+
-          '<div style="font-size:10.5px;color:#999;margin-top:2px">'+x.client+(x.product?' · '+x.product:'')+'</div>'+
-        '</div>'+
-        '<div style="min-width:72px;text-align:right"><div style="font-size:10px;color:#999">Fund IRR</div><div style="font-size:13px;font-weight:600">'+fmtP(x.fund)+'</div></div>'+
-        '<div style="min-width:72px;text-align:right"><div style="font-size:10px;color:#999">BMIRR</div><div style="font-size:13px">'+fmtP(x.bench)+'</div></div>'+
-        '<div style="min-width:72px;text-align:right"><div style="font-size:10px;color:#999">Deviation</div><div style="font-size:13px;font-weight:700;color:'+dev.col+'">'+dev.str+'</div></div>'+
-        '</div>';
-    }
-    function sectionBox(title,bgCol,borderCol,accentCol,items){
-      if(!items.length) return '';
-      return '<div style="background:'+bgCol+';border:1px solid '+borderCol+';border-radius:8px;padding:12px 14px;margin-bottom:14px;">'+
-        '<div style="font-weight:700;font-size:11.5px;color:'+accentCol+';text-transform:uppercase;letter-spacing:.05em;margin-bottom:8px">'+title+' ('+items.length+')</div>'+
-        items.map(function(x){ return instrCard(x,accentCol); }).join('')+
-        '</div>';
-    }
-    var lvlN=['Total Portfolio','Client','Asset','Product'];
-    var tRows=summaryRows.map(function(r){
-      var pad=8+r.level*16, bg=r.level===0?'#DBC8B2':r.level===1?'#EFE7DC':'';
-      var fw=r.level<=1?700:r.level===2?600:400;
-      var dv=devInfo(r.fund,r.bench);
-      return '<tr style="background:'+bg+'"><td style="padding-left:'+pad+'px;font-weight:'+fw+';font-size:12px">'+r.label+'</td>'+
-        '<td style="text-align:center;color:#888;font-size:10.5px">'+lvlN[r.level]+'</td>'+
-        '<td style="color:#666;font-size:10.5px">'+r.benchName+'</td>'+
-        '<td style="text-align:right;font-weight:'+fw+';font-size:12px">'+fmtP(r.fund)+'</td>'+
-        '<td style="text-align:right;font-size:12px">'+fmtP(r.bench)+'</td>'+
-        '<td style="text-align:right;font-weight:700;font-size:12px;color:'+dv.col+'">'+dv.str+'</td></tr>';
-    }).join('');
-    var hierTable='<div style="overflow:auto"><table class="cz" style="width:100%;border-collapse:collapse;font-size:12px">'+
-      '<tr><th style="text-align:left">Name</th><th style="text-align:center">Level</th>'+
-      '<th style="text-align:left">Benchmark</th><th style="text-align:right">Fund IRR</th>'+
-      '<th style="text-align:right">BMIRR</th><th style="text-align:right">Out/Under</th></tr>'+
-      tRows+'</table></div>';
+    var note = model.irrActive ? ('Fund &amp; Benchmark XIRR are transaction-based (as on '+(model.irrAsOn||'—')+').') : ('Fund &amp; Benchmark XIRR are taken from the base file.');
     s.innerHTML='<div class="card">'+
-      '<h3>Fund IRR vs Benchmark — Transaction-based XIRR</h3>'+
-      '<div class="sub">*XIRR (actual/365) as on '+(model.irrAsOn||'—')+'. In-line band = ±10% of BMIRR value. Instruments sorted by deviation within each box.</div>'+
-      kpis+bandHtml+
-      (instrList.length?
-        '<div style="font-size:11px;font-weight:600;color:#888;text-transform:uppercase;letter-spacing:.05em;margin-bottom:12px">Instrument Classification</div>'+
-        sectionBox('▲ Outperforming','#F2FBF4','#A8D5B5','#1B6B2E',cats.out)+
-        sectionBox('▬ In Line','#FDF8EF','#E8D0A8','#BD9568',cats.line)+
-        sectionBox('▼ Underperforming','#FFF5F5','#F0B8B8','#931621',cats.under)+
-        (cats.noB.length?sectionBox('— No Benchmark Data','#F8F8F8','#D9D9D9','#888',cats.noB):'')+
-        '<details style="margin-top:4px"><summary style="cursor:pointer;font-size:12px;color:#888;padding:4px 0;user-select:none">▸ Portfolio / Client / Asset / Product hierarchy</summary><div style="margin-top:8px">'+hierTable+'</div></details>'
-      : hierTable)+
+      '<h3>Fund IRR — Top Contributors &amp; Laggards</h3>'+
+      '<div class="sub">Portfolio holdings ranked by Current Market Value. Contributors beat their benchmark (Fund XIRR &gt; Benchmark XIRR); laggards trail it. '+note+' Portfolio as on '+model.meta.asOnDate+'.</div>'+
+      tbl('TOP 5 CONTRIBUTORS (As per Current Market Value)', cl.contributors, '#C6E0B4', '#1E5631', '#2E7D32', 'No holdings outperformed their benchmark.')+
+      tbl('TOP 5 LAGGARDS (As per Current Market Value)', cl.laggards, '#931621', '#FFFFFF', '#931621', 'No holdings trailed their benchmark.')+
       '</div>';
   }
   function renderObs(){
