@@ -2337,9 +2337,8 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       x.fillText(nm,pad,oy+lab+r*rowH+rowH/2);
       x.textAlign='center'; x.font='bold 11px Cambria';
       for(var c2=0;c2<k;c2++){
-        var ci=idx[c2], v=ov.matrix[ri][ci], d=ri===ci, faded=(!d&&v<ovTh);
+        var ci=idx[c2], v=ov.matrix[ri][ci], d=ri===ci;
         var cx=ox+c2*cell, cy=oy+lab+r*rowH;
-        if(faded){ x.fillStyle='#2c3b4d'; x.fillRect(cx,cy,cell-1,rowH-1); continue; }
         x.fillStyle=ovColH(v,d); x.fillRect(cx,cy,cell-1,rowH-1);
         x.fillStyle=ovTxtH(v,d); x.fillText((d?'100.00':v.toFixed(2))+'%',cx+cell/2,cy+rowH/2);
       }
