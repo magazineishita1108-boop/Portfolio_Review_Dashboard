@@ -1342,39 +1342,43 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     /* ---- 3. HOLDING SHEETS (per client, paginated) ---- */
     model.clients.forEach(function(cl){
       var hh={bold:true,color:"FFFFFF",fill:{color:C.black},align:"right",fontSize:8};
-      var head=[cell("Instrument Name",{bold:true,color:"FFFFFF",fill:{color:C.black},fontSize:8}),
-        cell("Distributor",{bold:true,color:"FFFFFF",fill:{color:C.black},fontSize:8}),
-        cell("Purchase Date",{bold:true,color:"FFFFFF",fill:{color:C.black},fontSize:8}),
-        cell("Invested Value ("+model.unit.lab+")",hh),
-        cell("Current Market Value ("+model.unit.lab+")",hh),
-        cell("Total Gain/Loss ("+model.unit.lab+")",hh),
-        cell("Allocation %",hh),
-        cell("XIRR %",hh),
-        cell("BMXIRR %",hh)];
+      var ht={bold:true,color:"FFFFFF",fill:{color:C.black},align:"left",fontSize:8};
+      var CZW={name:2.75,pdate:1.05,dist:1.2,inv:1.5,cmv:1.7,gl:1.5,alloc:1.02,xirr:1.1,bmxirr:1.1,absret:1.3};
+      var cols=(typeof CZHOLD!=="undefined"&&CZHOLD&&CZHOLD.cols)?CZHOLD.cols.filter(function(c){return CZHOLD.sel[c.key];}):[{key:"name",lab:"Instrument Name"},{key:"dist",lab:"Distributor"},{key:"pdate",lab:"Purchase Date"},{key:"inv",lab:"Invested Value",unit:true},{key:"cmv",lab:"Current Market Value",unit:true},{key:"gl",lab:"Total Gain/Loss",unit:true},{key:"alloc",lab:"Allocation %"},{key:"xirr",lab:"XIRR %"},{key:"bmxirr",lab:"BMXIRR %"}];
+      function hLab(c){ return c.unit?(c.lab+" ("+model.unit.lab+")"):c.lab; }
+      var head=cols.map(function(c){ return cell(hLab(c),(c.key==="name"||c.key==="dist"||c.key==="pdate")?ht:hh); });
       function rowCells(r){
         var fill = r.level==="asset"?C.greyM:(r.level==="product"?C.greyL:(r.level==="grand"?C.black:"FFFFFF"));
         var fg = r.level==="grand"?"FFFFFF":C.black;
         var bold = r.level!=="item";
-        var lbl = (r.level==="item"?"   ":"")+r.label;
-        function mc(v){ var t=model.unit.t(v); return cell(t,{align:"right",fill:{color:fill},color: (!num(v)&&v<0)?C.red:fg, bold:bold}); }
-        function pc(v){ var t=num(v)?"—":(Math.round(v*100)/100).toFixed(2)+"%"; return cell(t,{align:"right",fill:{color:fill},color:fg,bold:bold}); }
-        return [cell(lbl,{fill:{color:fill},color:fg,bold:bold}),
-          cell(r.dist||"",{fill:{color:fill},color:fg,bold:bold,fontSize:8}),
-          cell(r.level==="item"?(r.pdate||""):"",{fill:{color:fill},color:fg,bold:bold,fontSize:8}),
-          mc(r.inv),mc(r.cmv),mc(r.gl),pc(r.alloc),pc(r.xirr),pc(r.bmxirr)];
+        function tc(t){ return cell(t,{fill:{color:fill},color:fg,bold:bold,fontSize:8}); }
+        function mc(v){ var t=model.unit.t(v); return cell(t,{align:"right",fill:{color:fill},color:(!num(v)&&v<0)?C.red:fg,bold:bold}); }
+        function pc(v){ var t=num(v)?"—":(Math.round(v*100)/100).toFixed(2)+"%"; return cell(t,{align:"right",fill:{color:fill},color:(!num(v)&&v<0)?C.red:fg,bold:bold}); }
+        return cols.map(function(c){
+          if(c.key==="name") return cell((r.level==="item"?"   ":"")+r.label,{fill:{color:fill},color:fg,bold:bold});
+          if(c.key==="dist") return tc(r.level==="item"?(r.dist||""):"");
+          if(c.key==="pdate") return tc(r.level==="item"?(r.pdate||""):"");
+          if(c.key==="inv") return mc(r.inv);
+          if(c.key==="cmv") return mc(r.cmv);
+          if(c.key==="gl") return mc(r.gl);
+          if(c.key==="alloc") return pc(r.alloc);
+          if(c.key==="xirr") return pc(r.xirr);
+          if(c.key==="bmxirr") return pc(r.bmxirr);
+          if(c.key==="absret") return pc((r.inv!=null&&!isNaN(r.inv)&&r.inv!==0)?(r.gl/r.inv*100):null);
+          return cell("",{fill:{color:fill},color:fg,bold:bold});
+        });
       }
       var grandRow = cl.rows.filter(function(r){return r.level==="grand";})[0];
       var itemRows = cl.rows.filter(function(r){return r.level!=="grand";});
-      var gl = grandRow ? "Portfolio XIRR "+(grandRow.xirr==null?"—":grandRow.xirr.toFixed(2)+"%")+" vs benchmark "+(grandRow.bmxirr==null?"—":grandRow.bmxirr.toFixed(2)+"%")+
-        ((grandRow.xirr!=null&&grandRow.bmxirr!=null)?(grandRow.xirr>=grandRow.bmxirr?" — outperforming by "+(grandRow.xirr-grandRow.bmxirr).toFixed(2)+"%.":" — trailing by "+(grandRow.bmxirr-grandRow.xirr).toFixed(2)+"%."):".") : "";
+      var _wsum=cols.reduce(function(a,c){return a+(CZW[c.key]||1.1);},0), _wf=12.97/_wsum;
+      var colW=cols.map(function(c){ return (CZW[c.key]||1.1)*_wf; });
       var per=13, pages=Math.ceil(itemRows.length/per);
       for (var p=0;p<pages;p++){
         var s=base("Portfolio Holdings - "+cl.name + (pages>1?" (cont. "+(p+1)+"/"+pages+")":""));
         var chunk=[head].concat(itemRows.slice(p*per,(p+1)*per).map(rowCells));
-        if (grandRow) chunk.push(rowCells(grandRow));   // Grand Total repeated on every page
-        s.addTable(chunk,{x:0.18,y:1.12,w:12.97,colW:[2.75,1.2,1.05,1.4,1.95,1.4,1.02,1.1,1.1],
+        if (grandRow) chunk.push(rowCells(grandRow));
+        s.addTable(chunk,{x:0.18,y:1.12,w:12.97,colW:colW,
           rowH:0.34,fontFace:F,fontSize:8.5,valign:"middle",border:{type:"solid",color:"D9D9D9",pt:0.5}});
-        if (gl) insight(s, gl, 0.18, 6.18, 12.97, 0.5);
         foot(s,"*Allocation re-based to "+cl.name+"'s portfolio (CMV "+model.unit.m(cl.totalCMV)+"). "+(model.irrActive?("XIRR/BMXIRR transaction-based (as on "+model.irrAsOn+")."):"XIRR/BMXIRR are CMV-weighted.")+" Portfolio as on "+model.meta.asOnDate+".");
       }
     });
@@ -1518,7 +1522,6 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
         var rest=ncol-3; var restW=(12.97-firstW-incW-aumW)/rest;
         var colW=[firstW,incW,aumW]; for (var c2=0;c2<rest;c2++) colW.push(restW);
         s.addTable(trows,{x:0.18,y:1.10,w:12.97,colW:colW,rowH:0.27,fontFace:F,fontSize:7.5,valign:"middle",border:{type:"solid",color:"D9D9D9",pt:0.5}});
-        if (INS.perf) insight(s, INS.perf, 0.18, 6.18, 12.97, 0.5);
         foot(s,"*Performance as on "+model.meta.dataDates.performance+". Benchmark (TRI) rows in honey. Annualised for ≥1Y. Missing data shown as —.");
       }
     });
@@ -2506,19 +2509,72 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
   }
   function ctxLine(ctx,x,t,b){ ctx.save();ctx.strokeStyle='#931621';ctx.lineWidth=1.5;ctx.setLineDash([6,4]);ctx.beginPath();ctx.moveTo(x,t);ctx.lineTo(x,b);ctx.stroke();ctx.setLineDash([]);ctx.fillStyle='#931621';ctx.font='11px Cambria';ctx.fillText('20% cap',x-22,t-4);ctx.restore(); }
 
+  /* ── Holdings presentation-column registry (drives dashboard table + PPT) ── */
+  window.CZHOLD = window.CZHOLD || {
+    cols:[
+      {key:"name",  lab:"Instrument Name", lock:true},
+      {key:"pdate", lab:"Purchase Date"},
+      {key:"dist",  lab:"Distributor"},
+      {key:"inv",   lab:"Invested Value",       unit:true},
+      {key:"cmv",   lab:"Current Market Value", unit:true},
+      {key:"gl",    lab:"Total Gain/Loss",      unit:true},
+      {key:"alloc", lab:"Allocation %"},
+      {key:"xirr",  lab:"XIRR %"},
+      {key:"bmxirr",lab:"BMXIRR %"},
+      {key:"absret",lab:"Absolute Return %"}
+    ],
+    sel:{name:1,pdate:1,dist:1,inv:1,cmv:1,gl:1,alloc:1,xirr:1,bmxirr:1,absret:1}
+  };
+  window.czHoldCols=function(){ return CZHOLD.cols.filter(function(c){return CZHOLD.sel[c.key];}); };
+  window.czHoldToggle=function(k){ if(k==="name")return; CZHOLD.sel[k]=CZHOLD.sel[k]?0:1; renderHoldings(); };
+  function czAbsRet(r){ return (r&&r.inv!=null&&!isNaN(r.inv)&&r.inv!==0)?(r.gl/r.inv*100):null; }
+  (function(){ if(typeof document==="undefined"||document.getElementById("czcolcss"))return;
+    var st=document.createElement("style"); st.id="czcolcss";
+    st.textContent=".czcolchips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}"
+      +".czcolchip{font-family:Cambria;font-size:12px;padding:5px 13px;border-radius:16px;border:1px solid #BD9568;background:#fff;color:#000;cursor:pointer;line-height:1.25;}"
+      +".czcolchip.on{background:#BD9568;color:#fff;}"
+      +".czcolchip.lock{cursor:default;background:#DBC8B2;color:#000;border-color:#DBC8B2;}"
+      +".czcolpick h3{margin-bottom:0;}";
+    document.head.appendChild(st);
+  })();
+
   function renderHoldings(){
-    var s=document.getElementById('s-holdings'); var html='';
+    var s=document.getElementById('s-holdings'); if(!s) return;
+    if(!model){ s.innerHTML=''; return; }
+    var cols=czHoldCols();
+    function colLab(c){ return c.unit?(c.lab+' ('+model.unit.lab+')'):c.lab; }
+    var chips=CZHOLD.cols.map(function(c){
+      var on=!!CZHOLD.sel[c.key];
+      return '<button type="button" class="czcolchip'+(on?' on':'')+(c.lock?' lock':'')+'" data-col="'+c.key+'">'+colLab(c)+'</button>';
+    }).join('');
+    var html='<div class="card czcolpick"><h3>Presentation Columns</h3>'
+      +'<div class="sub">Choose which columns appear in the holdings tables below and in the exported PPT. Instrument Name is always shown.</div>'
+      +'<div class="czcolchips">'+chips+'</div></div>';
     model.clients.forEach(function(cl){
       var rows=cl.rows.map(function(r){
         var cls=r.level==='asset'?'lvl-asset':(r.level==='product'?'lvl-product':(r.level==='grand'?'lvl-grand':'lvl-item'));
-        var distCell = r.level==='item' ? '<td>'+(r.dist||'—')+'</td>' : '<td></td>';
-        var pdCell = r.level==='item' ? '<td>'+(r.pdate||'—')+'</td>' : '<td></td>';
-        return '<tr class="'+cls+'"><td>'+r.label+'</td>'+distCell+pdCell+'<td'+neg(r.inv)+'>'+model.unit.t(r.inv)+'</td><td'+neg(r.cmv)+'>'+model.unit.t(r.cmv)+'</td><td'+neg(r.gl)+'>'+model.unit.t(r.gl)+'</td><td>'+pe(r.alloc)+'</td><td>'+pe(r.xirr)+'</td><td>'+pe(r.bmxirr)+'</td></tr>';
+        var tds=cols.map(function(c){
+          if(c.key==='name') return '<td>'+r.label+'</td>';
+          if(c.key==='pdate') return '<td>'+(r.level==='item'?(r.pdate||'—'):'')+'</td>';
+          if(c.key==='dist') return '<td>'+(r.level==='item'?(r.dist||'—'):'')+'</td>';
+          if(c.key==='inv') return '<td'+neg(r.inv)+'>'+model.unit.t(r.inv)+'</td>';
+          if(c.key==='cmv') return '<td'+neg(r.cmv)+'>'+model.unit.t(r.cmv)+'</td>';
+          if(c.key==='gl') return '<td'+neg(r.gl)+'>'+model.unit.t(r.gl)+'</td>';
+          if(c.key==='alloc') return '<td>'+pe(r.alloc)+'</td>';
+          if(c.key==='xirr') return '<td>'+pe(r.xirr)+'</td>';
+          if(c.key==='bmxirr') return '<td>'+pe(r.bmxirr)+'</td>';
+          if(c.key==='absret'){ var a=czAbsRet(r); return '<td'+neg(a)+'>'+pe(a)+'</td>'; }
+          return '<td></td>';
+        }).join('');
+        return '<tr class="'+cls+'">'+tds+'</tr>';
       }).join('');
       html+='<div class="card"><h3>Portfolio Holdings — '+cl.name+'</h3><div class="sub">Allocation re-based to this client (CMV '+model.unit.m(cl.totalCMV)+'). '+(model.irrActive?('XIRR/BMXIRR transaction-based (as on '+model.irrAsOn+').'):'XIRR/BMXIRR CMV-weighted.')+'</div>'+
-        '<table class="cz"><tr><th>Instrument Name</th><th>Distributor</th><th>Purchase Date</th><th>Invested Value ('+model.unit.lab+')</th><th>Current Market Value ('+model.unit.lab+')</th><th>Total Gain/Loss ('+model.unit.lab+')</th><th>Allocation %</th><th>XIRR %</th><th>BMXIRR %</th></tr>'+rows+'</table></div>';
+        '<table class="cz"><tr>'+cols.map(function(c){return '<th>'+colLab(c)+'</th>';}).join('')+'</tr>'+rows+'</table></div>';
     });
-    document.getElementById('s-holdings').innerHTML=html;
+    s.innerHTML=html;
+    Array.prototype.forEach.call(s.querySelectorAll('.czcolchip[data-col]'),function(b){
+      b.addEventListener('click',function(){ czHoldToggle(b.getAttribute('data-col')); });
+    });
   }
 
   function renderAnalytics(){
@@ -2892,23 +2948,28 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     function better(v,u,hiGood){return hiGood?Number(v)>Number(u):Number(v)<Number(u);}
     function pct(v){return isN(v)?(Number(v)*100).toFixed(2)+'%':'N/A';}
 
-    /* ── fuzzy name match ───────────────────────────────────────────────── */
+    /* ── fuzzy name match (v7: cap-compound canon + closeness scoring) ───── */
     var _mfrKeys=Object.keys(MFR);
     function normStr(n){return n.toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();}
+    var _CAPPAIRS=[['mid cap','midcap'],['small cap','smallcap'],['large cap','largecap'],['flexi cap','flexicap'],['multi cap','multicap'],['micro cap','microcap'],['mid small','midsmall']];
+    function canon(n){var s=normStr(n);for(var i=0;i<_CAPPAIRS.length;i++){s=s.replace(new RegExp('\\b'+_CAPPAIRS[i][0]+'\\b','g'),_CAPPAIRS[i][1]);}return s;}
     var JUNK={reg:1,regular:1,direct:1,growth:1,g:1,idcw:1,plan:1,the:1,of:1,dir:1};
-    function toks(n){return normStr(n).split(' ').filter(function(t){return t.length>2&&!JUNK[t];});}
-    var _mfrNorm={};_mfrKeys.forEach(function(k){_mfrNorm[k]=normStr(k);});
+    function toks(n){return canon(n).split(' ').filter(function(t){return t.length>2&&!JUNK[t];});}
+    var _mfrCanon={},_mfrToks={};_mfrKeys.forEach(function(k){_mfrCanon[k]=canon(k);_mfrToks[k]=toks(k);});
     function fuzzyMatch(name){
       if(!name) return null;
       if(MFR[name]) return MFR[name];
-      var nn=normStr(name);
-      for(var i=0;i<_mfrKeys.length;i++){if(_mfrNorm[_mfrKeys[i]]===nn) return MFR[_mfrKeys[i]];}
-      var nt=toks(name),best=null,bs=0;
+      var cn=canon(name);
+      for(var i=0;i<_mfrKeys.length;i++){if(_mfrCanon[_mfrKeys[i]]===cn) return MFR[_mfrKeys[i]];}
+      var nt=toks(name),best=null,bestScore=-999,bestLen=999;
       _mfrKeys.forEach(function(k){
-        var c=toks(k).filter(function(t){return nt.indexOf(t)>=0;}).length;
-        if(c>bs){bs=c;best=MFR[k];}
+        var kt=_mfrToks[k],matched=0;
+        for(var x=0;x<kt.length;x++){if(nt.indexOf(kt[x])>=0)matched++;}
+        if(matched<2) return;
+        var score=matched-(kt.length-matched);
+        if(score>bestScore||(score===bestScore&&kt.length<bestLen)){bestScore=score;bestLen=kt.length;best=MFR[k];}
       });
-      return bs>=3?best:null;
+      return bestScore>=1?best:null;
     }
 
     /* ── live universe avg from MFR ─────────────────────────────────────── */
