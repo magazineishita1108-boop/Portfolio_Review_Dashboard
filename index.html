@@ -367,6 +367,13 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     if (/mutual fund|pms|aif|index fund|^etf$|bond|debenture|ncd|fixed deposit|\bfd\b/.test(p)) return false;
     return /direct equity|^equity$|^equities$|stock|shares?|listed equity|scrip|sip/.test(p);
   }
+  // Commodity funds (gold/silver/precious-metal) — excluded from equity & debt look-through analytics
+  function isCommodity(h){
+    var a=String(h.asset||"").toLowerCase();
+    if (a==="commodity"||a==="commodities") return true;
+    var s=((h.name||"")+" "+(h.category||"")).toLowerCase();
+    return /\b(gold|silver|bullion|commodit(?:y|ies)|precious\s*metals?)\b/.test(s);
+  }
 
   /* ---------- benchmark lookup ---------- */
   function normBench(s){ return String(s||"").toLowerCase().replace(/\btri\b/g,"").replace(/[^a-z0-9]/g,""); }
@@ -628,7 +635,10 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       var aLower = String(h.asset||"").toLowerCase();
       if (/arbitrage/i.test(h.category||"")) aLower="hybrid";  // arbitrage treated as HYBRID for ANALYTICS only (eq+db sleeves) — asset allocation keeps its base tag
       h.eqKey=null; h.hyKey=null; h.dbKey=null;
-      if (aLower==="hybrid"){
+      h.commodity = isCommodity(h);
+      if (h.commodity){
+        // commodity funds are EXCLUDED from equity & debt look-through analytics (still shown in allocation/holdings/performance)
+      } else if (aLower==="hybrid"){
         h.hyKey = matchInstrument(h.name,h.amc,hyKeys,cacheHY);
         if (!h.hyKey) h.eqKey = matchInstrument(h.name,h.amc,eqKeys,cacheEQ); // fallback to equity sleeve
       } else if (aLower==="debt"){
@@ -644,7 +654,7 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       else if (isSIF){ h.perfKey=matchInstrument(h.name,"",sifKeys,cacheSIF); if(h.perfKey)h.perfSrc="SIF"; }
       else { h.perfKey=matchInstrument(h.name,h.amc,mfKeys,cacheMF); if(h.perfKey)h.perfSrc="MF"; }
       // unmatched = neither analytics nor performance resolved
-      if (!h.eqKey && !h.hyKey && !h.dbKey && !h.perfKey) unmatchedSet[h.name]=1;
+      if (!h.commodity && !h.eqKey && !h.hyKey && !h.dbKey && !h.perfKey) unmatchedSet[h.name]=1;
     });
     var unmatched = Object.keys(unmatchedSet);
 
@@ -836,6 +846,24 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       sectors: normArr(eq_sector,eq_exp).slice(0,10),
       stocks: normArr(eq_stock,eq_exp).slice(0,20).map(function(o){return {k:o.k,pct:o.pct,mcap:eq_stock_mcap[o.k]||""};})
     };
+    var _dmf=(function(){
+      var yN=0,yD=0,mN=0,mD=0,n=0;
+      // pure debt only: exclude hybrid/arbitrage/multi-asset/solution funds even if base-file Asset says 'Debt'
+      var reNotPureDebt=/arbitrage|hybrid|equity savings|balanced|multi[ -]?asset|dynamic asset|asset alloc|conservative|aggressive|solution|retirement|children|fund of fund|\bfof\b/i;
+      rows.forEach(function(h){
+        if (h.directEquity||h.commodity) return;
+        if (String(h.asset||"").toLowerCase()!=="debt") return;
+        if (reNotPureDebt.test((h.category||"")+" "+(h.name||""))) return;   // pure debt MFs only
+        if (h.perfSrc!=="MF"||!h.perfKey) return;
+        var rec=MFP[h.perfKey]; if(!rec||!rec.debt) return;
+        var cv=h.cmvCr||0; if(cv<=0) return;
+        var y=rec.debt.YTM, md=rec.debt.ModDur, used=false;
+        if(y!=null&&!isNaN(y)){ yN+=y*cv; yD+=cv; used=true; }
+        if(md!=null&&!isNaN(md)){ mN+=md*cv; mD+=cv; used=true; }
+        if(used) n++;
+      });
+      return { avgYTM: yD>0?yN/yD:null, avgModDur: mD>0?mN/mD:null, mfCount:n };
+    })();
     var debtAnalytics = {
       hasData: db_exp>0,
       exposureCr: db_exp,
@@ -845,7 +873,8 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
           var arr=normArr(grp,db_exp);
           return arr.sort(function(a,b){ var r=rgrank(a.k)-rgrank(b.k); return r||(b.pct-a.pct); });
         })(),
-      issuers: normArr(db_issuer,db_exp).slice(0,20)
+      issuers: normArr(db_issuer,db_exp).slice(0,20),
+      avgYTM: _dmf.avgYTM, avgModDur: _dmf.avgModDur, mfCount: _dmf.mfCount
     };
 
     /* ---- OVERLAP MATRIX (MF + PMS w/ stock data; top-20) ---- */
@@ -1380,18 +1409,17 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     if (model.debtAnalytics.hasData){
       var sd = base("Portfolio Analytics — Debt");
       var da=model.debtAnalytics;
-      sd.addText("Top Sectors / Asset Types (% of debt)",{x:0.2,y:1.05,w:6.3,h:0.3,fontFace:F,fontSize:11,bold:true,color:C.black});
-      var ds=da.sectors.slice(0,10).slice().reverse();
-      sd.addShape(pptx.ShapeType.roundRect,{x:0.12,y:1.30,w:6.46,h:2.62,rectRadius:0.04,fill:{color:"FFFFFF"},line:{color:C.greyL,width:1}}); sd.addChart(pptx.ChartType.bar,[{name:"Debt Sectors",labels:ds.map(function(x){return x.k;}),values:ds.map(function(x){return Math.round(x.pct*100)/100;})}],
-        {x:0.2,y:1.35,w:6.3,h:2.5,barDir:"bar",chartColors:[C.gold],showValue:true,dataLabelFormatCode:'0.00"%"',dataLabelFontFace:F,dataLabelColor:C.black,dataLabelFontSize:8,catAxisLabelFontFace:F,catAxisLabelFontSize:8,valAxisHidden:true,valGridLine:{style:'none'},catGridLine:{style:'none'},showLegend:false});
-      sd.addText("Credit Rating Distribution",{x:0.2,y:4.0,w:6.3,h:0.3,fontFace:F,fontSize:11,bold:true,color:C.black});
-      sd.addShape(pptx.ShapeType.roundRect,{x:0.12,y:4.26,w:6.46,h:2.64,rectRadius:0.04,fill:{color:"FFFFFF"},line:{color:C.greyL,width:1}}); sd.addChart(pptx.ChartType.doughnut,[{name:"Rating",labels:da.ratings.map(function(x){return x.k;}),values:da.ratings.map(function(x){return Math.round(x.pct*100)/100;})}],
-        {x:0.2,y:4.3,w:6.3,h:2.55,chartColors:["8C6B43","BD9568","C9A876","DCC4A5","BFBFBF","D9D9D9","E5DACB","9C7240","C9B79A","EDE6DA"],
-         showLabel:true,showPercent:true,showValue:false,showLegend:false,dataLabelFontFace:F,dataLabelColor:"222222",dataLabelFontSize:8,holeSize:50});
+      var _dn=function(v){return (v==null||isNaN(v))?"—":Number(v).toFixed(2);};
+      kpi(sd,0.12,1.10,3.18,_dn(da.avgModDur),"Avg Modified Duration (yrs)");
+      kpi(sd,3.40,1.10,3.18,_dn(da.avgYTM)+(da.avgYTM==null?"":"%"),"Avg YTM");
+      sd.addText("Credit Rating Distribution",{x:0.2,y:2.05,w:6.3,h:0.3,fontFace:F,fontSize:11,bold:true,color:C.black});
+      sd.addShape(pptx.ShapeType.roundRect,{x:0.12,y:2.34,w:6.46,h:4.55,rectRadius:0.04,fill:{color:"FFFFFF"},line:{color:C.greyL,width:1}}); sd.addChart(pptx.ChartType.doughnut,[{name:"Rating",labels:da.ratings.map(function(x){return x.k;}),values:da.ratings.map(function(x){return Math.round(x.pct*100)/100;})}],
+        {x:0.2,y:2.42,w:6.3,h:4.4,chartColors:["8C6B43","BD9568","C9A876","DCC4A5","BFBFBF","D9D9D9","E5DACB","9C7240","C9B79A","EDE6DA"],
+         showLabel:true,showPercent:true,showValue:false,showLegend:true,legendPos:"b",legendFontFace:F,legendFontSize:8,dataLabelFontFace:F,dataLabelColor:"222222",dataLabelFontSize:8,holeSize:50});
       var ih=[[cell("Top Issuers",{bold:true,color:"FFFFFF",fill:{color:C.black}}),cell("% Debt",{bold:true,color:"FFFFFF",fill:{color:C.black},align:"right"})]];
       da.issuers.slice(0,20).forEach(function(it,i){ var fill=i%2?"F4EEE6":"FFFFFF"; ih.push([cell(it.k,{fill:{color:fill},fontSize:8.5}),cell(it.pct.toFixed(2),{align:"right",fill:{color:fill},fontSize:8.5})]); });
       sd.addTable(ih,{x:6.75,y:1.05,w:6.4,colW:[5.3,1.1],rowH:0.27,fontFace:F,fontSize:8.5,valign:"middle",border:{type:"solid",color:"D9D9D9",pt:0.5}});
-      foot(sd,"*Analytics as on "+model.meta.dataDates.analytics+". Debt sleeve weighted by holding CMV; block sums to 100.00%.");
+      foot(sd,"*Analytics as on "+model.meta.dataDates.analytics+". Issuers & ratings weighted by holding CMV. Avg Modified Duration & Avg YTM are CMV-weighted across pure debt mutual funds only ("+(da.mfCount||0)+" fund"+((da.mfCount||0)===1?"":"s")+"), per the MF Monitor.");
     }
 
     /* ---- 5. OVERLAP MATRIX (dark navy + gold gradient, full fund-name rows like the Playbook) ---- */
@@ -1829,13 +1857,14 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     }
     /* 6. Debt Analytics */
     if (model.debtAnalytics.hasData){
-      var da=model.debtAnalytics, d=[["DEBT ANALYTICS (% of debt exposure)"],[],["Sectors / Asset Type","%"]];
-      da.sectors.forEach(function(s){ d.push([s.k,s.pct]); });
+      var da=model.debtAnalytics, d=[["DEBT ANALYTICS (% of debt exposure)"],[],["Metric (pure debt mutual funds only)","Value"],
+        ["Avg Modified Duration", da.avgModDur==null?"—":(Math.round(da.avgModDur*100)/100).toFixed(2)+" yrs"],
+        ["Avg YTM", da.avgYTM==null?"—":(Math.round(da.avgYTM*100)/100).toFixed(2)+"%"]];
       d.push([],["Credit Rating","%"]);
       da.ratings.forEach(function(s){ d.push([s.k,s.pct]); });
       d.push([],["Top 20 Issuers","%"]);
       da.issuers.forEach(function(s){ d.push([s.k,s.pct]); });
-      aoa("Debt Analytics",d,{cols:[{wch:34},{wch:12}],fmt:{1:'0.00"%"'}});
+      aoa("Debt Analytics",d,{cols:[{wch:34},{wch:14}],fmt:{1:'0.00"%"'}});
     }
     /* 7. Overlap */
     if (model.overlap.eligible){
@@ -2503,10 +2532,13 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     }
     if(da.hasData){
       var iss=da.issuers.map(function(it){return '<tr><td>'+it.k+'</td><td>'+it.pct.toFixed(2)+'</td></tr>';}).join('');
-      html+='<div class="card"><h3>Portfolio Analytics — Debt</h3><div class="sub">*Analytics as on '+model.meta.dataDates.analytics+'. Debt sleeve weighted by holding CMV; block sums to 100.00%.</div>'+
-        '<div class="flex"><div class="col"><h4 style="margin:4px 0;">Top Sectors / Asset Types</h4><div class="chartbox tall"><canvas id="dbSec"></canvas></div>'+
-        '<h4 style="margin:14px 0 4px;">Credit Rating Distribution</h4><div class="chartbox"><canvas id="dbRating"></canvas></div></div>'+
-        '<div class="col"><h4 style="margin:4px 0;">Top Issuers</h4><table class="cz"><tr><th>Issuer</th><th>% Debt</th></tr>'+iss+'</table></div></div></div>';
+      var _dn=function(v){return (v==null||isNaN(v))?'—':Number(v).toFixed(2);};
+      var dmKpi='<div style="display:flex;gap:10px;margin:2px 0 14px;">'+
+        '<div style="flex:1;background:#DBC8B2;border-radius:5px;padding:10px 12px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#000;">'+_dn(da.avgModDur)+'</div><div style="font-size:11px;color:#3a2810;">Avg Modified Duration (yrs)</div></div>'+
+        '<div style="flex:1;background:#DBC8B2;border-radius:5px;padding:10px 12px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#000;">'+_dn(da.avgYTM)+(da.avgYTM==null?'':'%')+'</div><div style="font-size:11px;color:#3a2810;">Avg YTM</div></div></div>';
+      html+='<div class="card"><h3>Portfolio Analytics — Debt</h3><div class="sub">*Analytics as on '+model.meta.dataDates.analytics+'. Debt sleeve weighted by holding CMV; block sums to 100.00%. Avg Modified Duration &amp; Avg YTM are CMV-weighted across pure debt mutual funds only ('+(da.mfCount||0)+' fund'+((da.mfCount||0)===1?'':'s')+'), per the MF Monitor.</div>'+
+        '<div class="flex"><div class="col">'+dmKpi+'<h4 style="margin:4px 0;">Credit Rating Distribution</h4><div class="chartbox tall"><canvas id="dbRating"></canvas></div></div>'+
+        '<div class="col"><h4 style="margin:4px 0;">Top 20 Issuers</h4><table class="cz"><tr><th>Issuer</th><th>% Debt</th></tr>'+iss+'</table></div></div></div>';
     }
     if(!ea.hasData && !da.hasData) html='<div class="card"><div class="empty">No equity or debt analytics available — no holdings matched stock-level reference data.</div></div>';
     s.innerHTML=html;
@@ -2516,8 +2548,6 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       charts.push(new Chart(document.getElementById('eqSec'),{type:'bar',data:{labels:sec.map(function(x){return x.k;}),datasets:[{data:sec.map(function(x){return +x.pct.toFixed(2);}),backgroundColor:'#BD9568'}]},options:barOpts(true)}));
     }
     if(da.hasData){
-      var ds=da.sectors.slice(0,10);
-      charts.push(new Chart(document.getElementById('dbSec'),{type:'bar',data:{labels:ds.map(function(x){return x.k;}),datasets:[{data:ds.map(function(x){return +x.pct.toFixed(2);}),backgroundColor:'#BD9568'}]},options:barOpts(true)}));
       charts.push(new Chart(document.getElementById('dbRating'),{type:'doughnut',data:{labels:da.ratings.map(function(x){return x.k;}),datasets:[{data:da.ratings.map(function(x){return +x.pct.toFixed(2);}),backgroundColor:['#8C6B43','#BD9568','#C9A876','#DCC4A5','#BFBFBF','#D9D9D9','#E5DACB','#9C7240','#C9B79A','#EDE6DA']}]},options:ratingOpts()}));
     }
   }
