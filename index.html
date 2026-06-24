@@ -387,6 +387,10 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
   function benchmarkFor(cat, bucket, REF){
     var B = REF.BENCHMARKS||{};
     var k = String(cat||"").toLowerCase();
+    /* ── Commodity (gold/silver) ── */
+    if (bucket==="Commodity MF" || /\bgold\b|\bsilver\b|bullion|precious\s*metal|commodit/.test(k)){
+      return /silver/.test(k) ? "Domestic Price of Silver" : "Domestic Price of Gold";
+    }
     /* ── Equity ── */
     if (/large.*mid|mid.*large/.test(k)) return "Nifty LargeMidcap 250 - TRI";
     if (/large/.test(k))                 return "Nifty 100 - TRI";
@@ -908,18 +912,20 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       if (h.perfSrc==="PMS") return "PMS";
       if (h.perfSrc==="AIF") return "AIF";
       if (h.perfSrc==="SIF") return "SIF";
+      if (h.commodity) return "Commodity MF";   // gold/silver/precious-metal funds -> own asset class (not Equity)
       var a=String(h.asset||"").toLowerCase();
       if (a==="hybrid") return "Hybrid MF";
       if (a==="debt") return "Debt MF";
       return "Equity MF";
     }
     var bucketDefs = [
-      {key:"Equity MF", cols:["3M","6M","1Y","3Y","5Y","10Y","SI"], mcap:true},
-      {key:"Hybrid MF", cols:["3M","6M","1Y","3Y","5Y","10Y","SI"], mcap:true},
-      {key:"Debt MF",   cols:["1M","3M","6M","1Y","2Y","3Y","5Y","SI"], debt:true},
-      {key:"PMS",       cols:["1M","3M","6M","1Y","2Y","3Y","5Y","SI"], mcap:true},
-      {key:"AIF",       cols:["1M","3M","6M","1Y","3Y","5Y","SI"], mcap:true},
-      {key:"SIF",       cols:["1M","3M","SI"], mcap:false}
+      {key:"Equity MF",    cols:["3M","6M","1Y","3Y","5Y","10Y","SI"], mcap:true},
+      {key:"Hybrid MF",    cols:["3M","6M","1Y","3Y","5Y","10Y","SI"], mcap:true},
+      {key:"Debt MF",      cols:["1M","3M","6M","1Y","2Y","3Y","5Y","SI"], debt:true},
+      {key:"Commodity MF", cols:["3M","6M","1Y","3Y","5Y","10Y","SI"], mcap:false},
+      {key:"PMS",          cols:["1M","3M","6M","1Y","2Y","3Y","5Y","SI"], mcap:true},
+      {key:"AIF",          cols:["1M","3M","6M","1Y","3Y","5Y","SI"], mcap:true},
+      {key:"SIF",          cols:["1M","3M","SI"], mcap:false}
     ];
     var perfByBucket={};
     rows.forEach(function(h){
@@ -2048,7 +2054,10 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
   function parseMonitor(sheetNames, getAOA){
     var MF_PERF={}, BENCH_RET={}, dataDate="";
     function normbench(x){ return String(x).toLowerCase().replace(/\btri\b/g,"").replace(/[^a-z0-9]/g,""); }
-    function kindOf(sh){ if(EQUITY_SHEETS.indexOf(sh)>=0)return "equity"; if(HYBRID_SHEETS.indexOf(sh)>=0)return "hybrid"; if(DEBT_SHEETS.indexOf(sh)>=0)return "debt"; return null; }
+    // Gold/Commodity/FoF (and any other non-equity/hybrid/debt category) sheets are ingested as
+    // "other" — returns only, no mcap/debt — so their fund performance enters MF_PERF instead of
+    // being dropped. The performance bucketing (bucketOf) routes commodity holdings to "Commodity MF".
+    function kindOf(sh){ if(EQUITY_SHEETS.indexOf(sh)>=0)return "equity"; if(HYBRID_SHEETS.indexOf(sh)>=0)return "hybrid"; if(DEBT_SHEETS.indexOf(sh)>=0)return "debt"; return "other"; }
     sheetNames.forEach(function(sh){
       var rows=getAOA(sh); if(!rows||!rows.length) return;
       if(!dataDate){ for(var z=0;z<Math.min(6,rows.length);z++){ var cell=clean((rows[z]||[])[0]); var mm=/as on\s*(.+)/i.exec(cell); if(mm){ dataDate=mm[1].trim(); break; } } }
@@ -2063,7 +2072,7 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
         var r=rows[i]||[]; var nm=clean(r[0]); if(!nm) continue; var low=nm.toLowerCase(); if(low==="home"||low==="as on") continue;
         // benchmark TRI rows (collect from any sheet)
         if (low==="benchmark") continue;
-        if (low.indexOf(" - tri")>=0 || ["bse 500","bse sensex","bse sensex next 50","nifty 50"].indexOf(low)>=0 || ["crisil composite bond index","crisil liquid debt index","crisil short term bond index"].indexOf(low)>=0 || /^crisil .* index$/.test(low)){
+        if (low.indexOf(" - tri")>=0 || ["bse 500","bse sensex","bse sensex next 50","nifty 50"].indexOf(low)>=0 || ["crisil composite bond index","crisil liquid debt index","crisil short term bond index"].indexOf(low)>=0 || /^crisil .* index$/.test(low) || low.indexOf("domestic price of")>=0 || /price of (physical\s+)?(gold|silver)/.test(low)){
           var key=normbench(nm); if(!(key in BENCH_RET)) BENCH_RET[key]={name:nm,r:{"1M":gv(r,c1m),"3M":gv(r,c3m),"6M":gv(r,c6m),"1Y":gv(r,c1y),"2Y":gv(r,c2y),"3Y":gv(r,c3y),"5Y":gv(r,c5y),"10Y":gv(r,c10y),"SI":gv(r,csi)}};
           continue;
         }
