@@ -732,10 +732,12 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     var liqPie=[]; Object.keys(liq).forEach(function(k){ if(liq[k]>0) liqPie.push({name:k,value:liq[k]/totalCMV*100}); });
 
     /* ---- AMC ALLOCATION (MF book only) ---- */
-    var mfProd={"mutual funds":1,"index fund":1,"index funds":1,"etf":1};
+    // Match the MF book TOLERANTLY: singular/plural ("Mutual Fund" vs "Mutual Funds"), index funds,
+    // ETFs, FoFs. (Was an exact-key map that silently dropped "Mutual Fund" singular -> empty AMC tab.)
+    function _isMFbook(p){ p=String(p||"").toLowerCase(); return /mutual\s*funds?\b|index\s*funds?\b|\betfs?\b|fund\s*of\s*funds?|\bfofs?\b/.test(p); }
     var amcMap={}, mfTotal=0;
     rows.forEach(function(h){
-      if (mfProd[String(h.product||"").toLowerCase()]){
+      if (_isMFbook(h.product)){
         amcMap[h.amcDisplay]=(amcMap[h.amcDisplay]||0)+h.cmvCr; mfTotal+=h.cmvCr;
       }
     });
@@ -881,7 +883,7 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       avgYTM: _dmf.avgYTM, avgModDur: _dmf.avgModDur, mfCount: _dmf.mfCount
     };
 
-    /* ---- OVERLAP MATRIX (MF + PMS w/ stock data; top-20) ---- */
+    /* ---- OVERLAP MATRIX (MF + hybrid equity sleeves + PMS w/ stock data; ALL stored holdings, name-normalised, ACTUAL reported weights, Σ min) ---- */
     var ovFunds=[]; var seenOv={};
     rows.forEach(function(h){
       if (/\bfofs?\b|fund of funds?/i.test((h.name||"")+" "+(h.category||""))) return;  // FOFs excluded (no direct stock holdings)
@@ -890,8 +892,13 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       var label=h.name;
       if (seenOv[key]) return; seenOv[key]=1;
       var stocks = h.eqKey?EQ[h.eqKey].stocks:(HY[h.hyKey].eq?HY[h.hyKey].eq.stocks:[]);
-      var top = stocks.slice().sort(function(a,b){return b[1]-a[1];}).slice(0,20);
-      var wmap={}; top.forEach(function(s){ wmap[s[0]]=s[1]; }); // s[1] already % of scheme equity
+      // Weight map keyed by NORMALISED company name (different AMC spellings of the same stock match),
+      // summing collisions, over ALL the fund's stored holdings, using EACH STOCK'S ACTUAL reported
+      // weight (% of the fund) - NO re-normalisation. Overlap below = sum of min(actual wA, actual wB).
+      // NOTE: embedded analytics stores only the top-30 holdings/fund, so for broad funds the captured
+      // weight is <100% (~84% for a Nifty 50 fund) until complete-holdings data is loaded/rebuilt.
+      var wmap={};
+      stocks.forEach(function(s){ var nm=normCo(s[0]); if(!nm) return; var w=+s[1]||0; if(w<=0) return; wmap[nm]=(wmap[nm]||0)+w; });
       ovFunds.push({key:key,label:label,w:wmap,asset:h.asset||"",product:h.product||"",category:h.category||""});
     });
     var overlap={eligible: ovFunds.length>=2, funds: ovFunds.map(function(f){return f.label;}), meta: ovFunds.map(function(f){return {label:f.label,asset:f.asset,product:f.product,category:f.category};}), matrix:[]};
@@ -1443,7 +1450,7 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
         if(__cv){ var iw=__cv.width/96, ih=__cv.height/96, mw=12.6, mh=5.55, sc=Math.min(mw/iw, mh/ih, 1.6), dw=iw*sc, dh=ih*sc; so.addImage({data:__cv.toDataURL("image/png"),x:(W-dw)/2,y:1.05,w:dw,h:dh}); }
       }catch(e){}
       
-      foot(so, (INS.overlap?INS.overlap+"  ":"")+"Overlap = \u03A3 min(weight_A, weight_B) over common top-20 stocks.");
+      foot(so, (INS.overlap?INS.overlap+"  ":"")+"Overlap = \u03A3 min(weight_A, weight_B) over common holdings (actual reported weights).");
     }
 
     if(!only) (function(){ var d=(typeof DIVIDERS!=="undefined")?DIVIDERS.annexure:""; if(d){ var s=pptx.addSlide(); s.background={color:"FFFFFF"}; s.addImage({data:d,x:0,y:0,w:W,h:Hh,sizing:{type:"contain",w:W,h:Hh}}); } })();
@@ -2223,22 +2230,51 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     var d=new Date(s); return isNaN(d)?null:d;
   }
   function parseIRR(sheetNames, getAOA){
-    function hmap(row){ var m={}; (row||[]).forEach(function(c,i){ if(c!=null) m[String(c).trim().toUpperCase()]=i; }); return m; }
-    function pick(rows, amtKey){
+    function hmap(row){ var m={}; (row||[]).forEach(function(c,i){ if(c==null) return;
+      var k=String(c).trim().toUpperCase().replace(/\s+/g," "); if(k&&!(k in m)) m[k]=i;
+      // also index a "cleaned" header with parenthetical units / currency stripped, e.g.
+      // "AMOUNT (₹)" -> "AMOUNT", "BM_AMOUNT (₹)" -> "BM_AMOUNT", "MARKET VALUE (CR.)" -> "MARKET VALUE"
+      var k2=k.replace(/\(.*?\)/g," ").replace(/[₹$]/g," ").replace(/\s+/g," ").trim(); if(k2&&!(k2 in m)) m[k2]=i;
+    }); return m; }
+    var A_CLIENT=["CLIENT","CLIENT NAME","CLIENTNAME","CLIENT_NAME","INVESTOR","INVESTOR NAME","HOLDER","HOLDER NAME"];
+    var A_AMT=["AMOUNT","AMT","CASHFLOW","CASH FLOW","NET AMOUNT","FUND AMOUNT","INVESTED AMOUNT","FLOW"];
+    var A_BMAMT=["BM_AMOUNT","BM AMOUNT","BMAMOUNT","BENCHMARK AMOUNT","BM_AMT","BM AMT","INDEX AMOUNT","BENCHMARK CASHFLOW"];
+    var A_DATE=["TRXN_DATE","TRXN DATE","TXN_DATE","TXN DATE","TRANSACTION DATE","TRANSACTIONDATE","TRADE DATE","DATE","NAV DATE","TRAN DATE"];
+    var A_INS=["INSTRUMENT","INSTRUMENT NAME","SCHEME","SCHEME NAME","SECURITY","SECURITY NAME","FUND","FUND NAME"];
+    var A_IDX=["INDEXNAME","INDEX NAME","INDEX","BENCHMARK","BENCHMARK NAME","BM NAME","BM_NAME"];
+    var A_ASSET=["ASSET","ASSET CLASS","ASSETNAME","ASSET NAME"];
+    var A_PROD=["PRODUCT","PRODUCT NAME","PRODUCT CATEGORY"];
+    var A_ACC=["ACCOUNT","ACCOUNT NAME","ACCT"];
+    var A_FOL=["FOLIO_NO","FOLIO NO","FOLIO","FOLIO NUMBER"];
+    function col(H,aliases){ for(var k=0;k<aliases.length;k++){ if(H[aliases[k]]!=null) return H[aliases[k]]; } return null; }
+    function headerRow(rows,amtAliases){ for(var i=0;i<Math.min(20,rows.length);i++){ var H=hmap(rows[i]); if(col(H,A_CLIENT)!=null && col(H,amtAliases)!=null && col(H,A_DATE)!=null) return i; } return -1; }
+    function pick(rows, amtAliases){
       if(!rows||!rows.length) return [];
-      var H=hmap(rows[0]); var ci={cl:H["CLIENT"],ac:H["ACCOUNT"],ins:H["INSTRUMENT"],fol:H["FOLIO_NO"],amt:H[amtKey],dt:H["TRXN_DATE"],asset:H["ASSET"],prod:H["PRODUCT"],idx:H["INDEXNAME"]};
-      if(ci.cl==null||ci.amt==null||ci.dt==null) return [];
+      var hr=headerRow(rows,amtAliases); if(hr<0) return [];
+      var H=hmap(rows[hr]);
+      var ci={cl:col(H,A_CLIENT),ac:col(H,A_ACC),ins:col(H,A_INS),fol:col(H,A_FOL),amt:col(H,amtAliases),dt:col(H,A_DATE),asset:col(H,A_ASSET),prod:col(H,A_PROD),idx:col(H,A_IDX)};
       var out=[];
-      for(var i=1;i<rows.length;i++){ var r=rows[i]||[]; var cl=r[ci.cl]; if(cl==null||String(cl).trim()==="") continue;
-        var a=r[ci.amt]; if(a==null||a==="") continue; a=parseFloat(String(a).replace(/,/g,"")); if(isNaN(a)) continue;
+      for(var i=hr+1;i<rows.length;i++){ var r=rows[i]||[]; var cl=r[ci.cl]; if(cl==null||String(cl).trim()==="") continue;
+        var a=r[ci.amt]; if(a==null||a==="") continue; a=parseFloat(String(a).replace(/[,\s₹]/g,"")); if(isNaN(a)) continue;
         var d=irrParseDate(r[ci.dt]); if(!d) continue;
         out.push({client:String(cl).trim(), account:ci.ac!=null?String(r[ci.ac]||"").trim():"", instrument:ci.ins!=null?String(r[ci.ins]||"").trim():"",
           folio:ci.fol!=null?String(r[ci.fol]||"").trim():"", asset:ci.asset!=null?String(r[ci.asset]||"").trim():"", product:ci.prod!=null?String(r[ci.prod]||"").trim():"", index:ci.idx!=null?String(r[ci.idx]||"").trim():"", d:d, a:a}); }
       return out;
     }
+    // 1) Detect sheets by NAME (original behaviour: "...Bmxirr" = benchmark, "...Xirr" = fund).
     var benchSh=null,fSh=null;
-    sheetNames.forEach(function(sn){ var u=sn.toUpperCase(); if(u.indexOf("BMXIRR")>=0||u.indexOf("BM XIRR")>=0||u.indexOf("BMX")>=0) benchSh=sn; else if(u.indexOf("XIRR")>=0) fSh=sn; });
-    var fund=fSh?pick(getAOA(fSh),"AMOUNT"):[], bench=benchSh?pick(getAOA(benchSh),"BM_AMOUNT"):[];
+    sheetNames.forEach(function(sn){ var u=String(sn).toUpperCase(); if(u.indexOf("BMXIRR")>=0||u.indexOf("BM XIRR")>=0||u.indexOf("BMX")>=0) benchSh=sn; else if(u.indexOf("XIRR")>=0) fSh=sn; });
+    // 2) Fallback: detect by CONTENT - a sheet whose header carries a benchmark-amount column is the
+    //    bench sheet; one with a plain amount column is the fund sheet. Handles renamed tabs / title rows.
+    if(!benchSh||!fSh){
+      sheetNames.forEach(function(sn){
+        if(sn===benchSh||sn===fSh) return;
+        var rows=getAOA(sn); if(!rows||!rows.length) return;
+        if(!benchSh && headerRow(rows,A_BMAMT)>=0){ benchSh=sn; return; }
+        if(!fSh && headerRow(rows,A_AMT)>=0){ fSh=sn; }
+      });
+    }
+    var fund=fSh?pick(getAOA(fSh),A_AMT):[], bench=benchSh?pick(getAOA(benchSh),A_BMAMT):[];
     var maxd=null; fund.forEach(function(t){ if(!maxd||t.d>maxd)maxd=t.d; });
     return {fund:fund, bench:bench, date:maxd};
   }
