@@ -84,8 +84,8 @@ header.top .brand{font-size:20px;font-weight:bold;letter-spacing:4px;color:#fff;
 .tabs{display:flex;flex-wrap:wrap;gap:0;margin:0 22px;border-bottom:2px solid var(--gold);}
 .tabs button{background:none;border:none;padding:11px 16px;font-family:inherit;font-size:14px;cursor:pointer;color:#444;border-bottom:3px solid transparent;margin-bottom:-2px;}
 .tabs button.active{color:#000;font-weight:bold;border-bottom-color:var(--gold);}
-.surface{display:none;margin:0 22px;}
-.surface.active{display:block;}
+.surface{display:block;scroll-margin-top:12px;margin:0 22px;}
+.surface.hidden-slide{display:none;}
 .card{background:#fff;border:1px solid var(--grey-l);margin:16px 0;padding:18px 20px;}
 .card h3{margin:0 0 4px;font-size:16px;color:#000;border-left:5px solid var(--gold);padding-left:10px;}
 .card .sub{font-size:11px;color:#777;font-style:italic;margin:0 0 12px;padding-left:15px;}
@@ -159,56 +159,139 @@ table.ovx td{min-width:58px;height:30px;text-align:center;font-size:11px;border:
 .refclr{display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;border:1px solid #ccc;background:transparent;color:#aaa;font-size:14px;line-height:1;cursor:pointer;padding:0;margin-left:6px;vertical-align:middle;font-family:inherit;}
 .refclr:hover{color:#931621;border-color:#931621;background:#fff5f5;}
 .refhint{font-size:10.5px;color:#8a7a68;margin-top:6px;line-height:1.4;border-top:1px solid #E8DDD3;padding-top:5px;}
+
+html{scroll-behavior:smooth;}
+/* ===== 3-COLUMN LAYOUT ===== */
+.app-body{display:flex;align-items:flex-start;}
+/* LEFT SIDEBAR */
+.left-sidebar{position:sticky;top:0;width:272px;min-width:272px;height:100vh;overflow-y:auto;background:#fff;border-right:1px solid var(--grey-l);transition:width .2s,min-width .2s;z-index:50;flex-shrink:0;}
+.left-sidebar.collapsed{width:0;min-width:0;overflow:hidden;}
+.sidebar-inner{display:flex;flex-direction:column;gap:10px;padding:14px 12px;min-width:248px;}
+#sidebarToggle{position:fixed;top:50%;transform:translateY(-50%);left:272px;transition:left .2s;z-index:100;background:#BD9568;color:#fff;border:none;border-radius:0 12px 12px 0;width:18px;height:48px;cursor:pointer;font-size:10px;padding:0;display:flex;align-items:center;justify-content:center;line-height:1;}
+/* COMPACT DROP ZONE */
+.dz-compact{border:2px dashed var(--gold);border-radius:6px;padding:10px 8px;cursor:pointer;background:#FCFAF7;transition:.15s;text-align:center;}
+.dz-compact h2{display:none;}
+.dz-compact.drag{background:#F4EADB;border-color:#000;}
+.dz-compact p{margin:2px 0;color:#555;font-size:11px;}
+.dz-compact .pick{display:inline-block;margin-top:6px;background:var(--gold);color:#fff;padding:5px 12px;border-radius:4px;font-weight:bold;font-size:12px;}
+.dz-loaded-row{display:flex;align-items:center;gap:6px;justify-content:center;flex-wrap:wrap;padding:4px 0;}
+.dz-fname{font-size:11px;font-weight:bold;color:#000;word-break:break-all;max-width:190px;}
+.dz-remove{background:transparent;border:1px solid #ccc;border-radius:50%;width:20px;height:20px;font-size:14px;line-height:1;color:#888;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.dz-remove:hover{color:#931621;border-color:#931621;}
+/* SIDEBAR LABELS & FORM ROWS */
+.sb-section-title{font-size:9.5px;font-weight:bold;letter-spacing:1.5px;color:var(--gold);text-transform:uppercase;margin-top:4px;padding-bottom:3px;border-bottom:1px solid var(--grey-l);}
+.sb-date-row label{font-family:Cambria;font-size:12px;color:#000;font-weight:600;display:flex;flex-direction:column;gap:4px;}
+.sb-date-row input[type=date]{font-family:Cambria;font-size:12px;padding:4px 6px;border:1px solid #BD9568;border-radius:4px;width:100%;}
+.sb-logo-row{display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
+.sb-logo-row .logobtn{padding:4px 8px;border:1px solid #BD9568;border-radius:4px;font-family:Cambria;font-size:11.5px;cursor:pointer;}
+.sb-tmplbtn{font-family:Cambria;font-size:11.5px;padding:6px 10px;border:1px solid #BD9568;border-radius:4px;background:#BD9568;color:#fff;cursor:pointer;width:100%;text-align:center;}
+.sb-refpanel .refrow{flex-direction:column!important;gap:0!important;}
+.sb-refpanel .refitem{min-width:0!important;flex:none!important;width:100%;border-radius:4px;padding:7px 9px;margin-bottom:6px;}
+.sb-refpanel .refitem .reflbl{font-size:11px;}
+.sb-refpanel .refitem .refstatus{font-size:10px;margin:2px 0 4px;}
+.sb-refpanel .refbtn{font-size:10.5px;padding:3px 8px;}
+.sb-refpanel .tplbtn{font-size:10.5px;padding:3px 8px;}
+.sb-refpanel .refclr{width:18px;height:18px;font-size:12px;}
+.sb-refpanel .refhint{font-size:9.5px;margin-top:4px;}
+/* STATUS + TOOLBAR in sidebar context */
+#status.statusline{margin:0;padding:8px 10px;font-size:12px;}
+#toolbar.toolbar{display:flex;flex-direction:column;gap:6px;margin:0;align-items:stretch;}
+#toolbar .btn{font-size:12.5px;padding:8px 10px;text-align:center;}
+#toolbar #meta{font-size:11px;color:#444;text-align:center;word-break:break-word;}
+/* MAIN CONTENT */
+.main-content{flex:1;min-width:0;}
+.main-content .foot{margin:26px 22px 40px;font-size:11px;color:#999;text-align:center;}
+/* RIGHT SIDEBAR */
+.right-sidebar{position:sticky;top:0;width:168px;min-width:168px;height:100vh;overflow-y:auto;background:#fff;border-left:1px solid var(--grey-l);flex-shrink:0;display:none;}
+.right-sidebar.show{display:block;}
+.rnav{padding:14px 0 14px 0;display:flex;flex-direction:column;gap:2px;}
+.rnav-label{font-size:9px;font-weight:bold;letter-spacing:1.8px;color:var(--gold);text-transform:uppercase;padding:8px 12px 4px;border-bottom:1px solid var(--grey-l);margin-bottom:2px;}
+.rnav-item{padding:7px 10px 7px 9px;font-family:Cambria;font-size:12px;color:#444;cursor:pointer;border-left:3px solid transparent;border-radius:0 4px 4px 0;line-height:1.3;margin-right:8px;}
+.rnav-item:hover{background:#FBF7F1;color:#000;}
+.rnav-item.active{border-left-color:var(--gold);font-weight:bold;color:#000;background:#FBF7F1;}
+.rnav-item.single-info{color:#999;font-size:11px;font-style:italic;cursor:default;border-left-color:transparent;padding-left:9px;}
+.rnav-item.single-info:hover{background:none;color:#999;}
 </style>
 </head>
 <body>
 <div class="app">
   <header class="top">
     <div class="ttl">Portfolio Review<small>CENTRICITY WEALTHTECH PVT. LTD.</small></div>
-    <div class="brand">CENTRICITY</div>
+    <img id="header-logo" style="height:44px;object-fit:contain;" alt="">
   </header>
   <div class="goldbar"></div>
 
-  <div class="panel uploader">
-    <div class="dz" id="dz">
-      <h2>Upload a client base file</h2>
-      <p>Drop the family/client holdings workbook (.xlsx) here, or click to browse.</p>
-      <p style="font-size:11px;color:#999;">Reference analytics &amp; performance data are embedded — analytics as on <b id="ddA">—</b>, performance as on <b id="ddP">—</b>.</p>
-      <span class="pick">Choose base file</span>
-      <input type="file" id="file" accept=".xlsx,.xls" style="display:none"/>
-    </div>
-    <div class="uprow" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap;padding:12px 6px 2px;border-top:1px solid #D9D9D9;margin-top:12px;">
-      <label style="font-family:Cambria;font-size:13px;color:#000;font-weight:600;">Portfolio as on:&nbsp;<input type="date" id="asOnPick" style="font-family:Cambria;font-size:13px;padding:4px 8px;border:1px solid #BD9568;border-radius:4px;"></label>
-      <button id="tmplBtn" style="font-family:Cambria;font-size:13px;padding:6px 14px;border:1px solid #BD9568;border-radius:4px;background:#BD9568;color:#fff;cursor:pointer;">&#8595; Download base-file template (.xlsx)</button><span style="display:inline-flex;align-items:center;gap:6px;font-family:Cambria;font-size:13px;border-left:1px solid #D9D9D9;padding-left:14px;">Logo:<button type="button" id="logoInv" class="logobtn" style="padding:5px 10px;border:1px solid #BD9568;border-radius:4px;background:#BD9568;color:#fff;cursor:pointer;font-family:Cambria;font-size:12px;">Invictus</button><button type="button" id="logoOne" class="logobtn" style="padding:5px 10px;border:1px solid #BD9568;border-radius:4px;background:#fff;color:#000;cursor:pointer;font-family:Cambria;font-size:12px;">OneDigital</button><label class="logobtn" style="padding:5px 10px;border:1px solid #BD9568;border-radius:4px;background:#fff;color:#000;cursor:pointer;font-family:Cambria;font-size:12px;">Upload…<input type="file" id="logoUp" accept="image/*" hidden></label><img id="logoPrev" alt="" style="height:26px;background:#000;border-radius:3px;padding:2px 4px;vertical-align:middle;"></span>
-      <span style="font-size:11px;color:#999;">Paste your holdings under the template headings, save, then upload above. Date defaults to today (IST).</span>
-    </div>
-  </div>
+  <div class="app-body">
+    <!-- ===== LEFT SIDEBAR ===== -->
+    <div class="left-sidebar" id="left-sidebar">
+      <button id="sidebarToggle" title="Collapse sidebar">&#9664;</button>
+      <div class="sidebar-inner">
 
-  <div class="panel refpanel">
-    <div class="refhead">Reference data <span>— embedded defaults are used unless you upload a fresher file</span></div>
-    <div class="refrow">
+        <div class="sb-section-title">Upload Base File</div>
+        <div class="dz-compact dz" id="dz">
+          <div id="dz-idle">
+            <p>Drop .xlsx here or click to browse</p>
+            <p style="font-size:10px;color:#999;">Analytics: <b id="ddA">&#8212;</b> &middot; Perf: <b id="ddP">&#8212;</b></p>
+            <span class="pick">Choose base file</span>
+            <input type="file" id="file" accept=".xlsx,.xls" style="display:none"/>
+          </div>
+          <div id="dz-loaded" style="display:none;">
+            <div class="dz-loaded-row"><span id="dz-fname" class="dz-fname"></span><button id="dz-remove" class="dz-remove" title="Remove file">&#215;</button></div>
+          </div>
+        </div>
+
+        <div class="sb-section-title">Portfolio Date</div>
+        <div class="sb-date-row">
+          <label>As on:&nbsp;<input type="date" id="asOnPick" style="font-family:Cambria;font-size:12px;padding:4px 6px;border:1px solid #BD9568;border-radius:4px;width:100%;"></label>
+        </div>
+
+        <div class="sb-section-title">Logo</div>
+        <div class="sb-logo-row">
+          <button type="button" id="logoInv" class="logobtn" style="padding:4px 8px;border:1px solid #BD9568;border-radius:4px;background:#BD9568;color:#fff;cursor:pointer;font-family:Cambria;font-size:11.5px;">Invictus</button>
+          <button type="button" id="logoOne" class="logobtn" style="padding:4px 8px;border:1px solid #BD9568;border-radius:4px;background:#fff;color:#000;cursor:pointer;font-family:Cambria;font-size:11.5px;">OneDigital</button>
+          <label class="logobtn" style="padding:4px 8px;border:1px solid #BD9568;border-radius:4px;background:#fff;color:#000;cursor:pointer;font-family:Cambria;font-size:11.5px;">Upload&#8230;<input type="file" id="logoUp" accept="image/*" hidden></label>
+          <img id="logoPrev" alt="" style="height:26px;background:#000;border-radius:3px;padding:2px 4px;vertical-align:middle;margin-top:4px;">
+        </div>
+
+        <div class="sb-section-title">Template</div>
+        <button id="tmplBtn" class="sb-tmplbtn">&#8595; Download base-file template (.xlsx)</button>
+
+        <div class="sb-section-title">Reference Data</div>
+        <div class="refpanel sb-refpanel" style="margin:0;border:none;padding:0;">
+          <div class="refrow">
       <div class="refitem"><div class="reflbl">Daily MF Monitor</div><div class="refstatus" id="rs-mon">Embedded default</div><label class="refbtn">Upload .xlsx<input type="file" id="up-mon" accept=".xlsx,.xls" hidden></label><button class="refclr" id="clr-mon" title="Reset to embedded default">×</button></div>
       <div class="refitem"><div class="reflbl">PMS / AIF Analytics (Client SOA)</div><div class="refstatus" id="rs-pms">Embedded default</div><label class="refbtn">Upload .xlsx<input type="file" id="up-pms" accept=".xlsx,.xls" hidden></label><button class="refbtn tplbtn" id="tpl-pms" title="Download blank template with required columns">Template ↓</button><button class="refclr" id="clr-pms" title="Reset to embedded default">×</button><div class="refhint">Client SOA columns: Product Category · Scheme Name · Company Name · Corrected Name · Holding(%) · Sector · ISIN · SEBI Mcap</div></div>
       <div class="refitem"><div class="reflbl">Bonds / Debt Analytics</div><div class="refstatus" id="rs-bonds">Embedded default</div><label class="refbtn">Upload .xlsx<input type="file" id="up-bonds" accept=".xlsx,.xls" hidden></label><button class="refbtn tplbtn" id="tpl-bonds" title="Download blank template with required columns">Template ↓</button><button class="refclr" id="clr-bonds" title="Reset to embedded default">×</button><div class="refhint">Direct bond/NCD columns: Instrument Name · % Allocation · Rating · Issuer</div></div>
       <div class="refitem"><div class="reflbl">SIF Monitor</div><div class="refstatus" id="rs-sif">Not uploaded</div><label class="refbtn">Upload .xlsx<input type="file" id="up-sif" accept=".xlsx,.xls" hidden></label><button class="refclr" id="clr-sif" title="Remove uploaded data">×</button></div>
       <div class="refitem"><div class="reflbl">Direct MF Monitor</div><div class="refstatus" id="rs-dir">Not uploaded</div><label class="refbtn">Upload .xlsx<input type="file" id="up-dir" accept=".xlsx,.xls" hidden></label><button class="refclr" id="clr-dir" title="Remove uploaded data">×</button></div>
       <div class="refitem"><div class="reflbl">IRR Transactions</div><div class="refstatus" id="rs-irr">Not uploaded</div><label class="refbtn">Upload .xlsx<input type="file" id="up-irr" accept=".xlsx,.xls" hidden></label><button class="refclr" id="clr-irr" title="Remove uploaded data">×</button></div><div class="refitem"><div class="reflbl">Market Update slides</div><div class="refstatus" id="rs-mkt">Embedded default · Jun 2026 (4)</div><label class="refbtn">Upload images<input type="file" id="up-mkt" accept="image/*" multiple hidden></label><button class="refclr" id="clr-mkt" title="Reset to embedded slides">×</button></div>
-    </div>
-  </div>
+          </div>
+        </div>
 
-  <div class="statusline" id="status"></div>
+        <div class="statusline" id="status"></div>
 
-  <div class="toolbar" id="toolbar" style="display:none;">
-    <button class="btn" id="dlppt">⬇ Download PowerPoint (.pptx)</button>
-    <button class="btn dark" id="dlxls">⬇ Download Excel (.xlsx)</button>
-    <span id="meta" style="font-size:13px;color:#444;"></span>
-  </div>
+        <div class="toolbar" id="toolbar" style="display:none;">
+          <button class="btn" id="dlppt">&#11015; Download PowerPoint (.pptx)</button>
+          <button class="btn dark" id="dlxls">&#11015; Download Excel (.xlsx)</button>
+          <span id="meta" style="font-size:13px;color:#444;"></span>
+        </div>
 
-  <div class="tabs" id="tabs" style="display:none;"></div>
+      </div><!-- /sidebar-inner -->
+    </div><!-- /left-sidebar -->
 
-  <div id="surfaces"></div>
+    <!-- ===== MAIN CONTENT ===== -->
+    <div class="main-content">
+      <div class="tabs" id="tabs" style="display:none;"></div>
+      <div id="surfaces"></div>
+      <div class="foot">Centricity WealthTech Pvt. Ltd. &middot; Confidential &middot; Prepared for client review &middot; Generated by the Portfolio Review dashboard.</div>
+    </div><!-- /main-content -->
 
-  <div class="foot">Centricity WealthTech Pvt. Ltd. · Confidential · Prepared for client review · Generated by the Portfolio Review dashboard.</div>
+    <!-- ===== RIGHT SIDEBAR ===== -->
+    <div class="right-sidebar" id="right-sidebar">
+      <div class="rnav" id="right-nav"></div>
+    </div><!-- /right-sidebar -->
+
+  </div><!-- /app-body -->
 </div>
 
 <!-- ============ EMBEDDED REFERENCE DATA ============ -->
@@ -1559,9 +1642,6 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       }
     }
 
-    if(!only) (function(){ var d=(typeof THANKYOU_IMAGE!=="undefined")?THANKYOU_IMAGE:""; if(d){ var s=pptx.addSlide(); s.background={color:"FFFFFF"}; s.addImage({data:d,x:0,y:0,w:W,h:Hh,sizing:{type:"contain",w:W,h:Hh}}); } })();
-
-
     /* ---- MF ANALYSIS ---- */
     if(SHOW('mfanalysis')) (function(){
       var REF=global.REFDATA||{};
@@ -1791,6 +1871,8 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
         }
       });
     })();
+
+    if(!only) (function(){ var d=(typeof THANKYOU_IMAGE!=="undefined")?THANKYOU_IMAGE:""; if(d){ var s=pptx.addSlide(); s.background={color:"FFFFFF"}; s.addImage({data:d,x:0,y:0,w:W,h:Hh,sizing:{type:"contain",w:W,h:Hh}}); } })();
 
     return pptx;
   }
@@ -2303,6 +2385,19 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
   dz.addEventListener('dragleave',function(){dz.classList.remove('drag');});
   dz.addEventListener('drop',function(e){e.preventDefault();dz.classList.remove('drag');if(e.dataTransfer.files[0])handle(e.dataTransfer.files[0]);});
   file.addEventListener('change',function(e){if(e.target.files[0])handle(e.target.files[0]);});
+  (function(){ var dzR=document.getElementById('dz-remove'); if(!dzR) return;
+    dzR.addEventListener('click',function(e){ e.stopPropagation();
+      currentRows=null; model=null;
+      charts.forEach(function(ch){try{ch.destroy();}catch(ex){}});charts=[];
+      var surf=document.getElementById('surfaces'); if(surf) surf.innerHTML='';
+      var rnav=document.getElementById('right-nav'); if(rnav) rnav.innerHTML='';
+      var rsb=document.getElementById('right-sidebar'); if(rsb) rsb.classList.remove('show');
+      var tb=document.getElementById('toolbar'); if(tb) tb.style.display='none';
+      var st=document.getElementById('status'); if(st) st.className='statusline';
+      var dzI=document.getElementById('dz-idle'),dzL=document.getElementById('dz-loaded');
+      if(dzI&&dzL){dzI.style.display='';dzL.style.display='none';}
+    });
+  })();
   (function(){ var sf=document.getElementById('surfaces'); if(sf) sf.addEventListener('click',function(e){ var b=(e.target&&e.target.closest)?e.target.closest('.dlslide'):null; if(b){ e.preventDefault(); slidePPTX(b.getAttribute('data-tab')); } }); })();
 
   // ---- base-file template download + Portfolio-as-on date picker (IST) ----
@@ -2337,6 +2432,7 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
         if(!rows.length){ setStatus('No holdings rows found. Ensure the workbook has a <b>Base File</b> sheet with the 19 standard columns.',true); return; }
         currentRows=rows; currentFamily=deriveFamily(f.name, rows); currentDate=pickedAsOn||deriveDate(f.name);
         loadModel();
+        (function(fn){ var dzI=document.getElementById('dz-idle'),dzL=document.getElementById('dz-loaded'),dzF=document.getElementById('dz-fname'); if(dzI&&dzL&&dzF){dzI.style.display='none';dzL.style.display='block';dzF.textContent=fn;} })(f.name);
       }catch(err){ setStatus('Could not parse this file: '+err.message,true); console.error(err); }
     };
     fr.readAsArrayBuffer(f);
@@ -2350,7 +2446,6 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     setStatus('Loaded <b>'+currentRows.length+'</b> holdings · '+model.clients.length+' client(s) · CMV <b>'+model.unit.m(model.totalCMV)+'</b>.'+
       (unm? ' <span style="color:#931621">'+unm+' holding(s) could not be matched to reference data: '+model.unmatched.join('; ')+'</span>':' All holdings matched to reference data.'),unm>0);
     document.getElementById('toolbar').style.display='flex';
-    document.getElementById('tabs').style.display='flex';
     document.getElementById('meta').textContent='— '+model.meta.familyName+', as on '+model.meta.asOnDate;
     document.getElementById('ddA').textContent=activeRef.DATA_DATES.analytics||'—';
     document.getElementById('ddP').textContent=activeRef.DATA_DATES.performance||'—';
@@ -2535,16 +2630,50 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
     }catch(e){ setStatus('Slide generation failed: '+e.message,true); console.error(e); }
   }
   function renderAll(){
-    charts.forEach(function(c){try{c.destroy();}catch(e){}}); charts=[];
+    charts.forEach(function(ch){try{ch.destroy();}catch(e){}}); charts=[];
     var tabsEl=document.getElementById('tabs'); tabsEl.innerHTML='';
     var surf=document.getElementById('surfaces'); surf.innerHTML='';
+    var rnav=document.getElementById('right-nav'); if(rnav) rnav.innerHTML='';
+    var singleDist=!!(model.allocByDistributor&&model.allocByDistributor.cols&&model.allocByDistributor.cols.length===1);
+    var singleClient=!!(model.allocByClient&&model.allocByClient.cols&&model.allocByClient.cols.length===1);
     TABS.forEach(function(t,i){
+      /* hidden #tabs kept for backward-compat (JS still references it) */
       var b=document.createElement('button'); b.textContent=t[1]; b.dataset.k=t[0]; if(i===0)b.className='active';
       b.onclick=function(){ document.querySelectorAll('.tabs button').forEach(function(x){x.classList.remove('active');}); b.classList.add('active');
-        document.querySelectorAll('.surface').forEach(function(x){x.classList.remove('active');}); document.getElementById('s-'+t[0]).classList.add('active'); };
+        document.querySelectorAll('.surface').forEach(function(x){x.classList.remove('active');}); var el=document.getElementById('s-'+t[0]); if(el)el.classList.add('active'); };
       tabsEl.appendChild(b);
-      var sec=document.createElement('div'); sec.className='surface'+(i===0?' active':''); sec.id='s-'+t[0]; surf.appendChild(sec);
+      /* all surfaces block-visible, stacked */
+      var sec=document.createElement('div'); sec.className='surface'; sec.id='s-'+t[0];
+      if(t[0]==='distalloc'&&singleDist) sec.classList.add('hidden-slide');
+      if(t[0]==='clalloc'&&singleClient) sec.classList.add('hidden-slide');
+      surf.appendChild(sec);
     });
+    /* build right nav */
+    if(rnav){
+      var lbl=document.createElement('div'); lbl.className='rnav-label'; lbl.textContent='SECTIONS'; rnav.appendChild(lbl);
+      TABS.forEach(function(t){
+        var ni=document.createElement('div');
+        if(t[0]==='distalloc'&&singleDist){ ni.className='rnav-item single-info'; ni.textContent='Single Distributor'; rnav.appendChild(ni); return; }
+        if(t[0]==='clalloc'&&singleClient){ ni.className='rnav-item single-info'; ni.textContent='Single Client'; rnav.appendChild(ni); return; }
+        ni.className='rnav-item'; ni.dataset.k=t[0]; ni.textContent=t[1];
+        ni.onclick=(function(key){ return function(){ var el=document.getElementById('s-'+key); if(el) el.scrollIntoView({behavior:'smooth',block:'start'}); }; })(t[0]);
+        rnav.appendChild(ni);
+      });
+    }
+    var rsb=document.getElementById('right-sidebar'); if(rsb) rsb.classList.add('show');
+    /* scroll-spy via IntersectionObserver */
+    if(typeof IntersectionObserver!=='undefined'){
+      var spy=new IntersectionObserver(function(entries){
+        entries.forEach(function(entry){
+          if(!entry.isIntersecting) return;
+          var k=entry.target.id.replace(/^s-/,'');
+          document.querySelectorAll('#right-nav .rnav-item').forEach(function(x){x.classList.remove('active');});
+          var hit=document.querySelector('#right-nav .rnav-item[data-k="'+k+'"]');
+          if(hit&&!hit.classList.contains('single-info')) hit.classList.add('active');
+        });
+      },{rootMargin:'-10% 0px -80% 0px'});
+      document.querySelectorAll('#surfaces .surface:not(.hidden-slide)').forEach(function(s){ spy.observe(s); });
+    }
     renderAsset(); renderDistAlloc(); renderClientAlloc(); renderAMC(); renderHoldings(); renderAnalytics(); renderOverlap(); renderPerf(); renderIRR(); renderObs(); renderMFAnalysis(); ensureDlBtns();
   }
   function pe(v){ return (v==null||isNaN(v))?'—':(Math.round(v*100)/100).toFixed(2)+'%'; }
@@ -2951,38 +3080,11 @@ var THANKYOU_IMAGE="data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAAMCA
       '<div class="sub">CMV breakdown as on '+model.meta.asOnDate+'.</div>'+
       '<div style="display:flex;gap:24px;flex-wrap:wrap;align-items:flex-start;margin-top:12px;">'+
         '<div style="flex:1;min-width:280px;max-width:520px;">'+
-          '<h4 style="font-family:Cambria;font-size:12px;font-weight:bold;margin:0 0 8px;color:#000;letter-spacing:0.2px;">CMV by '+entityLabel+' <span style="font-weight:normal;color:#888;">('+model.unit.cap+')</span></h4>'+
-          '<div style="height:300px;"><canvas id="'+cid1+'"></canvas></div>'+
-        '</div>'+
-        '<div style="flex:1;min-width:280px;max-width:520px;">'+
           '<h4 style="font-family:Cambria;font-size:12px;font-weight:bold;margin:0 0 8px;color:#000;letter-spacing:0.2px;">Asset Mix by '+entityLabel+' <span style="font-weight:normal;color:#888;">(% of CMV)</span></h4>'+
           '<div style="height:300px;"><canvas id="'+cid2+'"></canvas></div>'+
         '</div>'+
       '</div></div>';
 
-    /* Chart 1: horizontal bar — CMV per entity */
-    var cmvVals=cols.map(function(c){return +(data.grand[c]||0).toFixed(2);});
-    charts.push(new Chart(document.getElementById(cid1),{
-      type:'bar',
-      data:{
-        labels:cols,
-        datasets:[{label:'CMV ('+model.unit.lab+')',data:cmvVals,
-          backgroundColor:cols.map(function(_,i){var pal=['#BD9568','#DBC8B2','#BFBFBF','#8C6B43','#808080'];return pal[i%pal.length];}),
-          borderColor:'#000',borderWidth:0.5}]
-      },
-      options:{
-        indexAxis:'y',responsive:true,maintainAspectRatio:false,
-        plugins:{
-          legend:{display:false},
-          tooltip:{callbacks:{label:function(ctx){return ' '+model.unit.t(ctx.raw);}}}
-        },
-        scales:{
-          x:{grid:{color:'#ede9e2'},ticks:{font:{family:'Cambria',size:10},color:'#333'},
-             title:{display:true,text:model.unit.lab,font:{family:'Cambria',size:10},color:'#666'}},
-          y:{ticks:{font:{family:'Cambria',size:10},color:'#222'},grid:{display:false}}
-        }
-      }
-    }));
 
     /* Chart 2: stacked 100% bar — asset class mix per entity */
     var assetPal=['#DBC8B2','#BFBFBF','#BD9568','#808080','#8C6B43','#C9A876','#D9D9D9'];
@@ -3588,7 +3690,20 @@ var bi=document.getElementById("logoInv"); if(bi) bi.onclick=function(){ setLogo
 var bo=document.getElementById("logoOne"); if(bo) bo.onclick=function(){ setLogo(BRAND_LOGOS.onedigital,"one"); };
 var lu=document.getElementById("logoUp"); if(lu) lu.onchange=function(e){ var f=e.target.files[0]; if(!f)return; var r=new FileReader(); r.onload=function(){ setLogo(r.result,"custom"); }; r.readAsDataURL(f); };
 var pv=document.getElementById("logoPrev"); if(pv) pv.src=BRAND_LOGO;
+var hl=document.getElementById("header-logo"); if(hl) hl.src=BRAND_LOGO;
 var mu=document.getElementById("up-mkt"); if(mu) mu.onchange=function(e){ var fs=Array.prototype.slice.call(e.target.files); if(!fs.length)return; var out=[],done=0; fs.forEach(function(f,ix){ var r=new FileReader(); r.onload=function(){ out[ix]=r.result; if(++done===fs.length){ MARKET_UPDATE_IMAGES=out.filter(Boolean); var st=document.getElementById("rs-mkt"); if(st)st.textContent="Uploaded ("+MARKET_UPDATE_IMAGES.length+")"; } }; r.readAsDataURL(f); }); };
+(function(){
+  var sbt=document.getElementById('sidebarToggle');
+  var lsb=document.getElementById('left-sidebar');
+  if(sbt&&lsb){
+    sbt.style.left='272px';
+    sbt.addEventListener('click',function(){
+      var collapsed=lsb.classList.toggle('collapsed');
+      sbt.innerHTML=collapsed?'&#9654;':'&#9664;';
+      sbt.style.left=collapsed?'0':'272px';
+    });
+  }
+})();
 })();</script>
 </body>
 </html>
