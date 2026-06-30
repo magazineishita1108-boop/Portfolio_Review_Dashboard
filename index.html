@@ -4486,7 +4486,16 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
 
   
   /* ======== renderCost ======== */
-  window.COST_OVERRIDES = (function(){ try{ return JSON.parse(localStorage.getItem('cost_overrides')||'{}'); }catch(e){return {};} })();
+  window.COST_OVERRIDES = (function(){ try{
+    var o=JSON.parse(localStorage.getItem('cost_overrides')||'{}'), changed=false;
+    Object.keys(o).forEach(function(k){ var v=+o[k];
+      if(!isFinite(v)||v<0){ delete o[k]; changed=true; return; }
+      /* ER is a decimal fraction (<0.03 = <300bps); legacy builds saved it x100 too large */
+      while(v>0.03){ v=v/100; changed=true; }
+      o[k]=v; });
+    if(changed){ try{ localStorage.setItem('cost_overrides',JSON.stringify(o)); }catch(e){} }
+    return o;
+  }catch(e){ return {}; } })();
   function saveCostOverrides(){ try{ localStorage.setItem('cost_overrides',JSON.stringify(window.COST_OVERRIDES)); }catch(e){} }
 
   /* Default TERs by SEBI sheet name (Regular plan) — used when ER not extracted from upload */
@@ -4542,67 +4551,64 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
     });
 
     function getMFER(perfKey, useDir, rawName, holdingCat){
-      /* 1. Check uploaded ER first */
+      /* Expense ratio source = the uploaded "Expense Ratio_Mutual Funds" file (window.MF_ER_TABLE).
+         Regular plan -> .r = Regular Plan Base Expense Ratio, falling back to Regular Plan Expense Ratio.
+         Direct plan  -> .d = Direct Plan Base Expense Ratio, falling back to Direct Plan Expense Ratio.
+         (Both base->non-base fallbacks are pre-resolved when MF_ER_TABLE is built from that file.)
+         Uploaded MF Monitors + category defaults are used ONLY for schemes absent from that file. */
+      var _ERT=window.MF_ER_TABLE||{};
+      var _ertNorm=function(k){ return k.replace(/Fund of Funds/gi,'FoF').replace(/Fund of Fund/gi,'FoF'); };
+      var _stripPay=function(k){ return String(k).replace(/\s*\((?:G|B|D|IDCW[^)]*|MD|QD|HD|AD|DD|WD|FN|Growth|Bonus|Div(?:idend)?|Payout|Reinv[^)]*)\)\s*$/i,'').trim().toLowerCase(); };
+      var _ertBase=function(){ if(window.__ERT_BASE&&window.__ERT_BASE.__src===_ERT) return window.__ERT_BASE;
+        var idx={__src:_ERT}; Object.keys(_ERT).forEach(function(k){ var b=_stripPay(k); if(!b) return; if(!idx[b]||/\(g\)\s*$/i.test(k)) idx[b]=_ERT[k]; }); window.__ERT_BASE=idx; return idx; };
+      var _ertLookup=function(k){ if(!k) return null; var r=_ERT[k]||_ERT[_ertNorm(k)]; if(r) return r; var b=_stripPay(_ertNorm(k)); return (b&&_ertBase()[b])||null; };
+      var _ertByRaw=function(){ if(!rawName) return null;
+        var _rn=_ertNorm(rawName).replace(/\s*[-–\s]+(regular|direct)\s*(plan\s*)?(growth|dividend|idcw\S*)?\s*$/i,'').trim();
+        return _ertLookup(_rn+'-Reg(G)'); };
       if(useDir){
+        /* DIRECT plan: Direct ratio from the Expense Ratio file first */
+        if(perfKey){ var _ed=_ertLookup(perfKey); if(_ed&&_ed.d!=null) return _ed.d; }
+        if(!perfKey){ var _edr=_ertByRaw(); if(_edr&&_edr.d!=null) return _edr.d; }
+        /* fallback: uploaded Direct MF Monitor */
         var dk=regKeyToDir(perfKey);
         if(dk&&PERF_DIR[dk]&&PERF_DIR[dk].er!=null) return PERF_DIR[dk].er;
-        /* fallback: any direct key that matches via name */
         if(dk&&!PERF_DIR[dk]){
-          /* try direct lookup in case naming differs slightly */
-          var dkKeys=Object.keys(PERF_DIR);
+          var dkKeys=Object.keys(PERF_DIR), dpref=dk.replace('(G)-Direct Plan','');
           for(var di=0;di<dkKeys.length;di++){
-            if(dkKeys[di].indexOf(dk.replace('(G)-Direct Plan',''))===0&&PERF_DIR[dkKeys[di]].er!=null)
-              return PERF_DIR[dkKeys[di]].er;
+            if(dkKeys[di].indexOf(dpref)===0&&PERF_DIR[dkKeys[di]].er!=null) return PERF_DIR[dkKeys[di]].er;
           }
         }
-      } else {
-        if(perfKey&&PERF_REG[perfKey]&&PERF_REG[perfKey].er!=null) return PERF_REG[perfKey].er;
+        if(rawName){
+          var _rnD=String(rawName).replace(/\s*[-–\s]+(regular|direct)\s*(plan\s*)?(growth|dividend|idcw\S*)?\s*$/i,'').trim().toLowerCase();
+          if(_rnD){ var dkK2=Object.keys(PERF_DIR);
+            for(var dj=0;dj<dkK2.length;dj++){
+              if(PERF_DIR[dkK2[dj]].er!=null && dkK2[dj].toLowerCase().indexOf(_rnD)===0) return PERF_DIR[dkK2[dj]].er;
+            } }
+        }
+        return null; /* not in the Expense Ratio file or the uploaded Direct MF Monitor */
       }
-      /* 2. Per-fund ER from embedded AMFI table (primary accurate source) */
-      var _ERT=window.MF_ER_TABLE||{};
-      /* normalise FoF abbreviation: "Fund of Funds" / "Fund of Fund" <-> "FoF" */
-      var _ertNorm=function(k){ return k.replace(/Fund of Funds/gi,'FoF').replace(/Fund of Fund/gi,'FoF'); };
-      var _ertLookup=function(k){ if(!k) return null; var r=_ERT[k]; return r||_ERT[_ertNorm(k)]||null; };
-      if(!useDir&&perfKey){ var _er=_ertLookup(perfKey); if(_er&&_er.r!=null) return _er.r; }
-      if(useDir){
-        var dk2=regKeyToDir(perfKey);
-        var rk2=dk2?dk2.replace(/\(G\)-Direct Plan$/,'-Reg(G)'):perfKey;
-        var _er2=_ertLookup(rk2)||_ertLookup(perfKey);
-        if(_er2&&_er2.d!=null) return _er2.d;
-        if(_er2&&_er2.r!=null) return _er2.r;
-      }
-      /* 2b. Raw-name ER fallback — for funds not matched in MF Monitor (perfKey=null) */
-      if(!perfKey&&rawName){
-        var _rn=_ertNorm(rawName)
-          .replace(/\s*[-–\s]+(regular|direct)\s*(plan\s*)?(growth|dividend|idcw\S*)?\s*$/i,'')
-          .trim();
-        var _rkR=_rn+'-Reg(G)'; var _rkD=_rn+'(G)-Direct Plan';
-        if(!useDir){ var _er3a=_ertLookup(_rkR); if(_er3a&&_er3a.r!=null) return _er3a.r; }
-        if(useDir){ var _er3b=_ertLookup(_rkD)||_ertLookup(_rkR);
-          if(_er3b&&_er3b.d!=null) return _er3b.d;
-          if(_er3b&&_er3b.r!=null) return _er3b.r; }
-      }
-      /* 3. Fall back to SHEET_TER_REG by sheet/category */
+      /* REGULAR plan: Regular ratio from the Expense Ratio file first, then uploaded Daily MF Monitor + category fallbacks */
+      if(perfKey){ var _er=_ertLookup(perfKey); if(_er&&_er.r!=null) return _er.r; }
+      if(!perfKey&&rawName){ var _er3a=_ertByRaw(); if(_er3a&&_er3a.r!=null) return _er3a.r; }
+      if(perfKey&&PERF_REG[perfKey]&&PERF_REG[perfKey].er!=null) return PERF_REG[perfKey].er;
       var perf=PERF_REG[perfKey]||null;
       var sheet=(perf&&perf.sheet)||'';
       var baseER=SHEET_TER_REG[sheet]||SHEET_TER_REG[holdingCat||'']||null;
-      if(baseER!=null){
-        /* Direct ≈ Regular minus ~0.6% (typical difference) */
-        return useDir ? Math.max(0, baseER-0.006) : baseER;
-      }
-      /* 4. MF_RISK cat fallback */
+      if(baseER!=null) return baseER;
       if(perfKey&&MFR[perfKey]){
         var cat=MFR[perfKey].cat||'';
-        if(/index/i.test(cat)) return useDir?0.0010:0.0050;
-        if(/large.?cap/i.test(cat)) return useDir?0.0090:0.0150;
-        if(/mid.?cap/i.test(cat)||/small.?cap/i.test(cat)) return useDir?0.0110:0.0175;
-        if(/flexi|multi|focused|contra|value|thematic|sector|elss|dividend/i.test(cat)) return useDir?0.0115:0.0175;
-        return useDir?0.0090:0.0150;
+        if(/index/i.test(cat)) return 0.0050;
+        if(/large.?cap/i.test(cat)) return 0.0150;
+        if(/mid.?cap/i.test(cat)||/small.?cap/i.test(cat)) return 0.0175;
+        if(/flexi|multi|focused|contra|value|thematic|sector|elss|dividend/i.test(cat)) return 0.0175;
+        return 0.0150;
       }
       return null;
     }
 
     function getER(sc){
+      /* Sovereign Gold Bonds carry no expense ratio */
+      if(/sovereign gold bond|\bsgb/i.test((sc.name||'').toLowerCase())) return 0;
       if(OVR[sc.name]!=null) return OVR[sc.name];
       var src=sc.perfSrc; var pk=sc.perfKey;
       if(src==='MF'||src==='SIF') return getMFER(pk, isDirect, sc.name, sc.cat);
@@ -4676,6 +4682,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
       '<button id="cost-reg-btn" style="padding:5px 14px;border-radius:4px;font-family:Cambria,serif;font-size:12px;cursor:pointer;border:1px solid '+(isDirect?'#ccc':'#BD9568')+';background:'+(isDirect?'#fff':'#BD9568')+';color:'+(isDirect?'#000':'#fff')+'">Regular</button>'+
       '<button id="cost-dir-btn" style="padding:5px 14px;border-radius:4px;font-family:Cambria,serif;font-size:12px;cursor:pointer;border:1px solid '+(isDirect?'#BD9568':'#ccc')+';background:'+(isDirect?'#BD9568':'#fff')+';color:'+(isDirect?'#fff':'#000')+'">Direct</button>'+
       '<span style="font-family:Cambria,serif;font-size:11px;color:#888">Click any ER cell to override. Double-click to reset.</span>'+
+      ''+
       '</div>';
 
     s.innerHTML=dlBar('cost')+'<div class="card">'+
