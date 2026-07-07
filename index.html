@@ -706,6 +706,7 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
     };
     function gv(r,c){ return (c>=0 && r[c]!=null) ? r[c] : null; }
     function gn(r,c){ var v=gv(r,c); if(v==null||v==="") return null; var f=parseFloat(String(v).replace(/,/g,"")); return isNaN(f)?null:f; }
+    function gnPct(r,c){ var v=gn(r,c); return v!=null ? v/100 : null; }  // base file stores XIRR/BMXIRR as percent (e.g. 31.71); convert to fraction (0.3171) to match the *100 display convention used everywhere downstream
     function _fmtPDd(d){ var M=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"]; return d.getDate()+" "+M[d.getMonth()]+" "+d.getFullYear(); }
     function fmtPD(v){ if(v==null||v==="") return ""; if(v&&typeof v==="object"&&typeof v.getMonth==="function"&&typeof v.getTime==="function") return isNaN(v.getTime())?"":_fmtPDd(v); if(typeof v==="number"){ var d=new Date(Math.round((v-25569)*86400000)); return isNaN(d.getTime())?String(v):_fmtPDd(d); } var s=String(v).trim(); var m=/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/.exec(s); if(m) return _fmtPDd(new Date(+m[1],+m[2]-1,+m[3])); m=/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{4})/.exec(s); if(m){ var dd=+m[1],mm=+m[2]; if(mm>12){var t=dd;dd=mm;mm=t;} return _fmtPDd(new Date(+m[3],mm-1,dd)); } return s; }
     // canonical Crore from whatever scale the file uses: Cr -> as-is, Lakhs -> /100, Rupees -> /1e7
@@ -738,8 +739,8 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
         glCr: _gl,
         liquidity: ws(gv(r,col.liq))||null, // from base file column "Liquidity" if present
         allocFrac: gn(r,col.alloc),       // fraction
-        xirrFrac: gn(r,col.xirr),         // fraction
-        bmxirrFrac: gn(r,col.bmxirr),     // fraction
+        xirrFrac: gnPct(r,col.xirr),      // fraction (converted from base-file percent)
+        bmxirrFrac: gnPct(r,col.bmxirr),  // fraction (converted from base-file percent)
         days: gn(r,col.days)
       });
     }
@@ -1151,6 +1152,7 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
         if (i2===j2){ rrow.push(100); continue; }
         var A=ovFunds[i2].w, Bw=ovFunds[j2].w, ov=0;
         for (var st in A){ if(Bw[st]!=null) ov += Math.min(A[st],Bw[st]); }
+        if (ov>=99.5 && ov<100) ov=100;   // near-identical factsheets (e.g. two funds tracking the same index) round up to a full match
         rrow.push(Math.round(ov*100)/100);
       }
       overlap.matrix.push(rrow);
@@ -1247,80 +1249,239 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
       }
     }
 
-    /* ---- OBSERVATIONS ---- */
-    var obs=[];
-    // 1 — asset allocation profile + mcap
+    /* ---- OBSERVATIONS: Current Portfolio + SWOT Analysis ---- */
+    /* obs = {currentPortfolio:{assetAllocation,productAllocation,amcAllocation,liquidity} (arrays of
+       1-2 sentence strings), swot:{strengths,weaknesses,opportunities,threats} (arrays of short bullet
+       strings)}. Every bullet fires ONLY when the underlying condition is true for THIS portfolio (never
+       fixed boilerplate) per the "never fabricate data" rule. Deliberately NOT auto-generated here (no
+       reliable, non-duplicative data source at this layer — see project memory): AMC/manager quality,
+       tax-efficiency, "alignment with investor risk profile & objectives" (needs the analyst-selected IPS
+       profile from window.getIPSData, a UI-only control — the IPS Profile Compliance tab/slide already
+       covers this), portfolio cost (see the Portfolio Cost tab — duplicating its fallback chain here
+       risked drift), Sharpe/Sortino roll-up (see MF Analysis for fund-level Sharpe/Sortino vs category
+       universe average), "lack of rebalancing" (no transaction-history data is modelled), "emerging
+       sectors/themes" (thesis-driven, not a data check). */
+    var CP = {assetAllocation:[], productAllocation:[], amcAllocation:[], liquidity:[]};
+    var SW = {strengths:[], weaknesses:[], opportunities:[], threats:[]};
+
+    // ============ 1a. CURRENT PORTFOLIO — Asset Allocation ============
     var eqShare = (aMap["Equity"]?aMap["Equity"].cmv:0)/totalCMV*100;
     var profile = eqShare>=85?"an aggressive risk profile":(eqShare>=60?"a growth-oriented risk profile":(eqShare>=40?"a balanced risk profile":"a conservative risk profile"));
     var mixParts = presentAssets.map(function(a){ return pct2(aMap[a].cmv/totalCMV*100)+" "+a.toLowerCase(); });
     var mcapStr = equityAnalytics.mcap.map(function(m){ return pct2(m.pct)+" "+m.k.toLowerCase().replace(" cap","-cap"); }).join(", ");
-    obs.push("The overall portfolio asset allocation reflects "+profile+", with "+mixParts.join(", ")+
+    CP.assetAllocation.push("The overall portfolio asset allocation reflects "+profile+", with "+mixParts.join(", ")+
       (equityAnalytics.hasData?(". Within the equity sleeve, market-cap allocation is distributed as: "+mcapStr+"."):"."));
-    // 2 — AMC breach
-    if (amcBreaches.length){
-      obs.push(amcBreaches.map(function(b){return b.amc+" constitutes "+pct2(b.pct)+" of the mutual-fund allocation";}).join("; ")+
-        ", breaching Centricity's 20% per-AMC cap. Over-reliance on a single fund house concentrates manager and operational risk; trimming these schemes towards the cap would improve diversification and reduce house-level risk.");
-    } else if (amcRows.length){
-      obs.push("No single fund house exceeds Centricity's 20% per-AMC cap (largest is "+amcRows[0].amc+" at "+pct2(amcRows[0].pct)+"), indicating well-diversified AMC exposure across the mutual-fund book.");
-    }
-    // 3 — single product-class concentration
+
+    // ============ 1b. CURRENT PORTFOLIO — Product Allocation ============
     var prodTot={};
     rows.forEach(function(h){ prodTot[h.product]=(prodTot[h.product]||0)+h.cmvCr; });
     var prodSorted=Object.keys(prodTot).sort(function(a,b){return prodTot[b]-prodTot[a];});
-    var topProdPct = prodTot[prodSorted[0]]/totalCMV*100;
+    var topProdPct = prodSorted.length ? prodTot[prodSorted[0]]/totalCMV*100 : 0;
+    if (prodSorted.length){
+      CP.productAllocation.push("By product, the portfolio is invested "+prodSorted.map(function(p){ return pct2(prodTot[p]/totalCMV*100)+" "+p; }).join(", ")+".");
+    }
     if (topProdPct>=85){
       var pn=prodSorted[0].toLowerCase();
-      obs.push("The portfolio is currently invested "+(topProdPct>=99.5?"entirely":("predominantly ("+pct2(topProdPct)+")"))+" in "+pn+". Introducing selective PMS and AIF strategies — from Centricity's focused list — would broaden diversification across investment styles and asset classes and create additional avenues for long-term return generation.");
+      CP.productAllocation.push("The book is "+(topProdPct>=99.5?"entirely":("predominantly ("+pct2(topProdPct)+")"))+" in "+pn+"; selective PMS and AIF strategies — from Centricity's focused list — would broaden the product mix.");
     }
-    // 4 — self-generated
-    // overlap
+
+    // ============ 1c. CURRENT PORTFOLIO — AMC Allocation ============
+    if (amcBreaches.length){
+      CP.amcAllocation.push(amcBreaches.map(function(b){return b.amc+" constitutes "+pct2(b.pct)+" of the mutual-fund allocation";}).join("; ")+
+        ", breaching Centricity's 20% per-AMC cap.");
+    } else if (amcRows.length){
+      CP.amcAllocation.push("No single fund house exceeds Centricity's 20% per-AMC cap (largest is "+amcRows[0].amc+" at "+pct2(amcRows[0].pct)+"), indicating well-diversified AMC exposure across the mutual-fund book.");
+    }
+
+    // ============ 1d. CURRENT PORTFOLIO — Liquidity ============
+    var liqTotal=0, closeEndedPct=0;
+    liqPie.forEach(function(p){ liqTotal+=p.value||0; if(/clos/i.test(p.name||"")) closeEndedPct+=p.value||0; });
+    var openEndedPct = liqTotal ? Math.max(0,liqTotal-closeEndedPct) : 0;
+    if (liqPie.length){
+      CP.liquidity.push("Liquidity-wise, "+pct2(openEndedPct)+" of the portfolio is in open-ended / readily liquid structures and "+pct2(closeEndedPct)+" in close-ended or structured / locked-in instruments"+
+        (liqPie.length>2?(" (split: "+liqPie.map(function(p){return p.name+" "+pct2(p.value);}).join(", ")+")"):"")+".");
+    } else {
+      CP.liquidity.push("Liquidity classification is not available — the base file did not carry a Liquidity column for these holdings.");
+    }
+
+    // ============ shared signals reused across SWOT quadrants ============
+    var goldPct=0; Object.keys(aMap).forEach(function(k){ if(/commodit|gold/i.test(k)) goldPct+=aMap[k].cmv; }); goldPct = totalCMV? goldPct/totalCMV*100 : 0;
+    var debtPct = (aMap["Debt"]?aMap["Debt"].cmv:0)/totalCMV*100;
+    var intlCMV=0; rows.forEach(function(h){ if(/(internat|global|us |nasdaq|s&p|overseas|world|china|taiwan|japan)/i.test(h.name||"")||/global|international/i.test(h.category||"")) intlCMV+=h.cmvCr; });
+    var intlPct = totalCMV? intlCMV/totalCMV*100 : 0;
+    var altCMV=0; rows.forEach(function(h){ if(h.perfSrc==="PMS"||h.perfSrc==="AIF") altCMV+=h.cmvCr; });
+    var altPct = totalCMV? altCMV/totalCMV*100 : 0;
+    var topSector = (equityAnalytics.hasData && equityAnalytics.sectors.length) ? equityAnalytics.sectors[0] : null;
+    var topStock  = (equityAnalytics.hasData && equityAnalytics.stocks.length) ? equityAnalytics.stocks[0] : null;
+
+    // ---- STRENGTHS ----
+    var classesPresent=[];
+    if (eqShare>=2) classesPresent.push("Equity");
+    if (debtPct>=2) classesPresent.push("Debt");
+    if (goldPct>=2) classesPresent.push("Gold/Commodities");
+    if (intlPct>=2) classesPresent.push("International");
+    if (altPct>=2) classesPresent.push("Alternatives (PMS/AIF)");
+    if (classesPresent.length>=3 && eqShare<85 && debtPct<85){
+      SW.strengths.push("Well-diversified allocation across "+classesPresent.join(", ")+" spreads the portfolio's return drivers rather than relying on one asset class.");
+    }
+    var matchedH = rows.filter(function(h){ return h.xirrFrac!=null && h.bmxirrFrac!=null; });
+    var matchedCMV = matchedH.reduce(function(s,h){return s+h.cmvCr;},0);
+    var overCMV = matchedH.filter(function(h){return h.xirrFrac>=h.bmxirrFrac;}).reduce(function(s,h){return s+h.cmvCr;},0);
+    if (matchedCMV>0 && overCMV/matchedCMV>=0.6){
+      SW.strengths.push(pct2(overCMV/matchedCMV*100)+" of CMV (across "+matchedH.length+" holdings with return data) is in funds performing at or ahead of their benchmark XIRR — consistent performance versus benchmark.");
+    }
+    if (liqPie.length && openEndedPct>=65){
+      SW.strengths.push("Open-ended / readily liquid structures make up "+pct2(openEndedPct)+" of the portfolio, providing adequate liquidity for short- and medium-term requirements.");
+    }
+    if (equityAnalytics.hasData){
+      var _mcTiers={}; equityAnalytics.mcap.forEach(function(m){ _mcTiers[m.k]=m.pct; });
+      var _tiersOk = Object.keys(_mcTiers).filter(function(k){ return /large|mid|small/i.test(k) && _mcTiers[k]>=5; });
+      if (_tiersOk.length>=3){
+        SW.strengths.push("The equity sleeve spans Large, Mid and Small caps ("+mcapStr+"), spreading market-cap risk rather than concentrating in one segment.");
+      }
+    }
+    var mfHold = rows.filter(function(h){ return h.perfSrc==="MF"; });
+    var mfCMVtot = mfHold.reduce(function(s,h){return s+h.cmvCr;},0);
+    var passiveCMV = mfHold.filter(function(h){ return /index\s*funds?\b|\betfs?\b/i.test(h.category||"")||/index\s*funds?\b|\betfs?\b/i.test(h.name||""); }).reduce(function(s,h){return s+h.cmvCr;},0);
+    var passivePct = mfCMVtot? passiveCMV/mfCMVtot*100 : 0;
+    if (mfCMVtot>0 && passivePct>=10 && passivePct<=75){
+      SW.strengths.push("The mutual-fund book blends active and passive strategies ("+pct2(passivePct)+" in index funds/ETFs), balancing cost-efficiency with alpha-seeking mandates.");
+    }
+
+    // ---- WEAKNESSES ----
+    var concFacts=[];
+    presentAssets.forEach(function(a){ var p=aMap[a].cmv/totalCMV*100; if(p>=85) concFacts.push("a single asset class ("+a+", "+pct2(p)+")"); });
+    if (topProdPct>=85) concFacts.push("a single product category ("+prodSorted[0]+", "+pct2(topProdPct)+")");
+    if (amcBreaches.length) concFacts.push(amcBreaches.map(function(b){return b.amc+" ("+pct2(b.pct)+")";}).join(", ")+" of the mutual-fund book");
+    if (topSector && topSector.pct>=35) concFacts.push("a single equity sector ("+topSector.k+", "+pct2(topSector.pct)+" of the equity sleeve)");
+    if (topStock && topStock.pct>=10) concFacts.push("a single stock ("+topStock.k+", "+pct2(topStock.pct)+" of the equity sleeve)");
+    if (concFacts.length){
+      SW.weaknesses.push("The portfolio shows concentration in "+concFacts.join("; ")+" — this raises manager-, sector- and house-level concentration risk.");
+    }
     var hiPairs=[];
     for (var oi=0;oi<overlap.matrix.length;oi++) for(var oj=oi+1;oj<overlap.matrix.length;oj++){ if(overlap.matrix[oi][oj]>40) hiPairs.push([overlap.funds[oi],overlap.funds[oj],overlap.matrix[oi][oj]]); }
     if (hiPairs.length){
       hiPairs.sort(function(a,b){return b[2]-a[2];});
       var p0=hiPairs[0];
-      obs.push("Several fund pairs show elevated portfolio overlap (e.g. "+p0[0]+" and "+p0[1]+" at "+pct2(p0[2])+"); consolidating overlapping schemes would improve efficiency and avoid duplication of underlying exposure.");
+      SW.weaknesses.push("Several fund pairs show elevated overlap (e.g. "+p0[0]+" and "+p0[1]+" at "+pct2(p0[2])+"), resulting in redundant underlying holdings.");
     }
-    // under-performers
+    if (equityAnalytics.hasData && equityAnalytics.stocks.length>=5){
+      var top5St = equityAnalytics.stocks.slice(0,5).reduce(function(t,x){return t+x.pct;},0);
+      if (top5St>=40){
+        SW.weaknesses.push("The top 5 stocks account for "+pct2(top5St)+" of the equity sleeve, indicating dependence on a limited number of return drivers.");
+      }
+    }
     var under = rows.filter(function(h){ return h.xirrFrac!=null && h.bmxirrFrac!=null && h.xirrFrac<h.bmxirrFrac; });
     if (under.length){
       under.sort(function(a,b){return (a.xirrFrac-a.bmxirrFrac)-(b.xirrFrac-b.bmxirrFrac);});
       var names=under.slice(0,3).map(function(h){return h.name;});
-      obs.push(under.length+" of "+rows.length+" holdings are trailing their benchmark XIRR (e.g. "+names.join(", ")+"); these warrant review for possible replacement with stronger category alternatives.");
+      SW.weaknesses.push(under.length+" of "+rows.length+" holdings are trailing their benchmark XIRR (e.g. "+names.join(", ")+"); these warrant review for possible replacement.");
     }
-    // low-allocation clutter
     var lows = rows.filter(function(h){ return (h.cmvCr/totalCMV*100)<1.5; });
     if (lows.length>=3){
-      obs.push(lows.length+" holdings each sit below 1.50% of the portfolio; consolidating these low-conviction positions would streamline the portfolio and ease monitoring.");
+      SW.weaknesses.push(lows.length+" holdings each sit below 1.50% of the portfolio, adding complexity without materially changing exposure (over-diversification).");
     }
-    // no international
-    var hasIntl = rows.some(function(h){ return /(internat|global|us |nasdaq|s&p|overseas|world|china|taiwan|japan)/i.test(h.name) || /global|international/i.test(h.category); });
-    if (!hasIntl){
-      obs.push("The portfolio currently has no dedicated international / global exposure; selective global allocation would add geographic diversification and reduce single-country concentration.");
+    // ---- OPPORTUNITIES ----
+    var underrep=[];
+    if (eqShare<5) underrep.push("Equity");
+    if (debtPct<5) underrep.push("Debt");
+    if (goldPct<5) underrep.push("Gold / Commodities");
+    if (intlPct<5) underrep.push("International / Global equity");
+    if (altPct<5) underrep.push("Alternatives (PMS/AIF)");
+    if (underrep.length){
+      SW.opportunities.push("The portfolio has limited or no exposure to "+underrep.join(", ")+"; selectively adding these would broaden diversification and open additional, less-correlated return sources.");
     }
-    // duplicate strategies
-    var catCount={}; rows.forEach(function(h){ catCount[h.category]=(catCount[h.category]||0)+1; });
-    var dupCats=Object.keys(catCount).filter(function(c){return catCount[c]>=3;});
-    if (dupCats.length){
-      obs.push("Multiple schemes share the same sub-category ("+dupCats.map(function(c){return c+" ×"+catCount[c];}).join(", ")+"); consolidating same-strategy funds would reduce redundancy without materially changing exposure.");
+    if (topProdPct>=85){
+      SW.opportunities.push("Introducing selective PMS and AIF strategies — from Centricity's focused list — would broaden diversification across investment styles and create additional avenues for long-term return generation.");
     }
-    // unmatched / unlisted instruments — confirm presence in structural sections
-    // NOTE: unmatched instruments ARE included in asset allocation, liquidity, distributor/client
-    // allocation, holding sheets, and IRR calculations. They are excluded only from the
-    // performance and analytics screens (no reference data available).
-    if (unmatched.length){
-      var unmRows = rows.filter(function(h){ return unmatchedSet[h.name]; });
-      var unmCMV  = unmRows.reduce(function(s,h){ return s+h.cmvCr; }, 0);
-      var unmPct  = totalCMV ? unmCMV/totalCMV*100 : 0;
-      obs.push(unmatched.length+" holding"+(unmatched.length>1?"s":"")+" — "+unmatched.join(", ")+" — "+
-        (unmatched.length>1?"are":"is")+" not mapped to reference data ("+pct2(unmPct)+" of portfolio CMV). "+
-        (unmatched.length>1?"These instruments are":"This instrument is")+
-        " fully reflected in all allocation, liquidity, and holding sheets but excluded from the performance and analytics screens; "+
-        "return attribution for "+(unmatched.length>1?"these positions":"this position")+
-        " should be tracked separately.");
+    if (hiPairs.length){
+      var p0b=hiPairs[0];
+      SW.opportunities.push("Consolidating overlapping schemes (e.g. "+p0b[0]+" / "+p0b[1]+") into differentiated strategies would improve capital efficiency and reduce duplication.");
     }
-    // rebalancing (always-on closing note)
-    obs.push("Periodic rebalancing is recommended to keep the allocation aligned with the family's objectives, risk profile and prevailing market conditions.");
+    if (mfCMVtot>0 && passivePct>80){
+      SW.opportunities.push("The mutual-fund book is "+pct2(passivePct)+" passive (index funds/ETFs); introducing select active strategies in segments with demonstrated alpha would diversify the return-generation approach.");
+    }
+    SW.opportunities.push("Periodic rebalancing is recommended to keep the allocation aligned with the family's objectives, risk profile and prevailing market conditions.");
+    if (lows.length>=3){
+      SW.opportunities.push("Consolidating the "+lows.length+" sub-1.50% holdings would simplify monitoring and reporting without materially changing exposure.");
+    }
+
+    // ---- THREATS ----
+    var mktConcFacts=[];
+    if (topSector && topSector.pct>=35) mktConcFacts.push(topSector.k+" ("+pct2(topSector.pct)+" of equity)");
+    if (topStock && topStock.pct>=10) mktConcFacts.push(topStock.k+" ("+pct2(topStock.pct)+" of equity)");
+    if (mktConcFacts.length){
+      SW.threats.push("Concentrated exposure to "+mktConcFacts.join(" and ")+" raises drawdown risk if that segment corrects.");
+    }
+    if (amcBreaches.length){
+      SW.threats.push("Concentration in "+amcBreaches.map(function(b){return b.amc;}).join(", ")+" raises AMC-specific risk — a fund-manager change or strategy drift at that house would have an outsized portfolio impact.");
+    }
+    if (liqPie.length && closeEndedPct>=20){
+      SW.threats.push("Close-ended / structured instruments account for "+pct2(closeEndedPct)+" of the portfolio; liquidity risk should be monitored around their lock-in and redemption windows.");
+    }
+    /* ---- Top-5 Contributors / Laggards vs benchmark (portfolio-wide, ranked by Fund XIRR then % allocation) ----
+       Moved here (was right before the function's final return) so the Threats section below can reuse the
+       exact same laggard list as the dedicated "Fund IRR" tab, instead of a second, slightly different
+       XIRR-based computation. */
+    var contribLag = (function(){
+      var byName={};
+      rows.forEach(function(h){
+        if(h.xirrFrac==null || h.bmxirrFrac==null || !(h.cmvCr>0)) return;
+        var k=h.name||'—';
+        var g=byName[k]||(byName[k]={name:k, cmv:0, wx:0, wb:0});
+        g.cmv+=h.cmvCr; g.wx+=h.xirrFrac*h.cmvCr; g.wb+=h.bmxirrFrac*h.cmvCr;
+      });
+      var arr=Object.keys(byName).map(function(k){
+        var g=byName[k], f=g.wx/g.cmv, b=g.wb/g.cmv;
+        return {name:g.name, cmv:g.cmv, alloc:(totalCMV?g.cmv/totalCMV*100:0), fund:f*100, bench:b*100, dev:(f-b)*100};
+      });
+      function byIRR(a,b){ return (b.fund-a.fund) || (b.alloc-a.alloc) || (b.cmv-a.cmv); }
+      return { contributors: arr.filter(function(x){return x.dev>0;}).sort(byIRR).slice(0,5),
+               laggards:     arr.filter(function(x){return x.dev<0;}).sort(byIRR).slice(0,5) };
+    })();
+
+    // Performance Sheet basis — trailing fund return vs the SAME category benchmark it is paired with
+    // on the Performance tab, checked at the 1Y / 3Y / 5Y tenors (extended 2026-07-07 from 1Y-only).
+    // Walks the raw bucket rows directly (sub -> funds -> bench per category) and only compares
+    // funds/benchmarks that both actually report a figure for that tenor. One bullet per tenor — each
+    // fires independently, only when that tenor actually has laggards.
+    function pushPerfLaggardBullet(tenor,label){
+      var perfLaggards=[];
+      (performance.buckets||[]).forEach(function(bk){
+        if (bk.cols.indexOf(tenor)<0) return;
+        var buf=[];
+        bk.rows.forEach(function(r){
+          if (r.type==="sub"){ buf=[]; return; }
+          if (r.type==="fund"){ buf.push(r); return; }
+          if (r.type==="bench"){
+            var bv=(r.r||{})[tenor];
+            if (bv!=null && !isNaN(bv)){
+              buf.forEach(function(f){
+                var fv=(f.r||{})[tenor];
+                if (fv!=null && !isNaN(fv) && fv<bv) perfLaggards.push({name:f.name, fund:fv, bench:bv, dev:fv-bv, benchName:r.label});
+              });
+            }
+            buf=[];
+          }
+        });
+      });
+      if (perfLaggards.length){
+        perfLaggards.sort(function(a,b){return a.dev-b.dev;});
+        var perfTop = perfLaggards.slice(0,3).map(function(x){ return x.name+" ("+pct2(x.fund)+" vs "+x.benchName+" "+pct2(x.bench)+")"; });
+        SW.threats.push("On the Performance Sheet, "+perfLaggards.length+" fund"+(perfLaggards.length>1?"s are":" is")+" behind "+(perfLaggards.length>1?"their":"its")+" category benchmark on "+label+" returns (e.g. "+perfTop.join(", ")+"); continued relative weakness here is a further drag on the portfolio.");
+      }
+    }
+    pushPerfLaggardBullet("1Y","trailing 1-year");
+    pushPerfLaggardBullet("3Y","trailing 3-year");
+    pushPerfLaggardBullet("5Y","trailing 5-year");
+    // Fund IRR basis — same laggard list as the dedicated Fund IRR tab (Fund XIRR vs Benchmark XIRR, pooled by
+    // instrument name, ranked by Fund XIRR then % allocation; transaction-based when an IRR file is loaded).
+    if (contribLag.laggards.length){
+      var irrTop = contribLag.laggards.slice(0,3).map(function(x){ return x.name+" ("+pct2(x.fund)+" vs "+pct2(x.bench)+")"; });
+      SW.threats.push("On a Fund IRR basis, "+contribLag.laggards.length+" holding"+(contribLag.laggards.length>1?"s are":" is")+" trailing "+(contribLag.laggards.length>1?"their":"its")+" benchmark IRR (e.g. "+irrTop.join(", ")+"); sustained IRR shortfall versus benchmark would drag on long-term portfolio returns if not addressed.");
+    }
+
+    var obs = {currentPortfolio:CP, swot:SW};
 
     /* family name */
     var familyName = opts.familyName || (function(){
@@ -1354,23 +1515,6 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
     var _uh = (opts && opts.unitHint) || (rows && rows.unitHint) || _unitHint || 'Cr';
     if (_uh==='auto') _uh = (totalCMV>=1) ? 'Cr' : 'L';   // raw-rupee-only files: pick by portfolio size
     var unit = mkUnit(_uh);
-    /* ---- Top-5 Contributors / Laggards vs benchmark (portfolio-wide, ranked by Fund XIRR then % allocation) ---- */
-    var contribLag = (function(){
-      var byName={};
-      rows.forEach(function(h){
-        if(h.xirrFrac==null || h.bmxirrFrac==null || !(h.cmvCr>0)) return;
-        var k=h.name||'—';
-        var g=byName[k]||(byName[k]={name:k, cmv:0, wx:0, wb:0});
-        g.cmv+=h.cmvCr; g.wx+=h.xirrFrac*h.cmvCr; g.wb+=h.bmxirrFrac*h.cmvCr;
-      });
-      var arr=Object.keys(byName).map(function(k){
-        var g=byName[k], f=g.wx/g.cmv, b=g.wb/g.cmv;
-        return {name:g.name, cmv:g.cmv, alloc:(totalCMV?g.cmv/totalCMV*100:0), fund:f*100, bench:b*100, dev:(f-b)*100};
-      });
-      function byIRR(a,b){ return (b.fund-a.fund) || (b.alloc-a.alloc) || (b.cmv-a.cmv); }
-      return { contributors: arr.filter(function(x){return x.dev>0;}).sort(byIRR).slice(0,5),
-               laggards:     arr.filter(function(x){return x.dev<0;}).sort(byIRR).slice(0,5) };
-    })();
     return {
       contribLag:contribLag,
       meta:{familyName:familyName, asOnDate:asOn, dataDates:DD},
@@ -1969,7 +2113,7 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
     })();
 
     /* ---- 6. PERFORMANCE ---- */
-    if(SHOW('perf')) model.performance.buckets.forEach(function(bk){
+    if(SHOW('perf')) window.filterPerfBuckets(model.performance.buckets).forEach(function(bk){
       var cols = bk.cols;
       var header = ["Scheme","Inception","AUM (Cr.)"].concat(cols);
       if (bk.mcap) header = header.concat(["Large","Mid","Small","Others"]);
@@ -2022,19 +2166,51 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
 
     /* ---- 7. OBSERVATIONS ---- */
     function __obsSlides(){
-      var obs=model.observations;
-      var per=6, pages=Math.ceil(obs.length/per);
-      for (var p=0;p<pages;p++){
-        var s=base("Portfolio Observations"+(pages>1?" ("+(p+1)+"/"+pages+")":""));
-        var y=1.25;
-        obs.slice(p*per,(p+1)*per).forEach(function(o,i){
-          var num2=p*per+i+1;
-          s.addShape(pptx.ShapeType.rect,{x:0.3,y:y+0.03,w:0.32,h:0.32,fill:{color:C.gold},line:{type:"none"}});
-          s.addText(String(num2),{x:0.3,y:y+0.03,w:0.32,h:0.32,fontFace:F,fontSize:11,bold:true,color:"FFFFFF",align:"center",valign:"middle"});
-          s.addText(o,{x:0.8,y:y,w:12.2,h:0.85,fontFace:F,fontSize:11,color:C.black,align:"left",valign:"top"});
-          y+=0.92;
-        });
+      var O = model.observations || {currentPortfolio:{}, swot:{}};
+      var CPp = O.currentPortfolio||{}, SWp = O.swot||{};
+      var asOnTxt = "Reflects the current base file / reference data as on "+model.meta.asOnDate+".";
+
+      function cpBody(arr){ return (arr&&arr.length) ? arr.join("\n\n") : "Not available."; }
+      function cpCard(s,label,arr,y,h){
+        s.addShape(pptx.ShapeType.roundRect,{x:0.18,y:y,w:12.97,h:h,rectRadius:0.04,fill:{color:"FBF7F1"},line:{color:C.gold,width:0.75}});
+        s.addShape(pptx.ShapeType.rect,{x:0.18,y:y,w:0.09,h:h,fill:{color:C.gold},line:{type:"none"}});
+        s.addText(label,{x:0.42,y:y+0.06,w:12.5,h:0.26,fontFace:F,fontSize:10.5,bold:true,color:C.gold,align:"left"});
+        s.addText(cpBody(arr),{x:0.42,y:y+0.32,w:12.5,h:h-0.4,fontFace:F,fontSize:10,color:"222222",align:"left",valign:"top",lineSpacingMultiple:1.12});
       }
+      var s1 = base("Portfolio Observations \u2014 Current Portfolio");
+      var yy=1.05, hh=1.38, gapY1=0.12;
+      cpCard(s1,"A.  BASED ON ASSET ALLOCATION",CPp.assetAllocation,yy,hh); yy+=hh+gapY1;
+      cpCard(s1,"B.  BASED ON PRODUCT ALLOCATION",CPp.productAllocation,yy,hh); yy+=hh+gapY1;
+      cpCard(s1,"C.  BASED ON AMC ALLOCATION",CPp.amcAllocation,yy,hh); yy+=hh+gapY1;
+      cpCard(s1,"D.  BASED ON LIQUIDITY",CPp.liquidity,yy,hh);
+      foot(s1,asOnTxt);
+
+      function swotRuns(arr){
+        arr=arr||[];
+        if(!arr.length) return "None flagged from the current data.";
+        var gap = arr.length<=5?8:(arr.length<=7?5:3);
+        return arr.map(function(t){ return {text:"\u2022  "+t, options:{breakLine:true, paraSpaceAfter:gap}}; });
+      }
+      function swotPanel(s,title,arr,y,h,bg,fg){
+        s.addShape(pptx.ShapeType.rect,{x:0.18,y:y,w:12.97,h:0.34,fill:{color:bg},line:{type:"none"}});
+        s.addText(title,{x:0.32,y:y,w:12.6,h:0.34,fontFace:F,fontSize:12,bold:true,color:fg,align:"left",valign:"middle"});
+        s.addShape(pptx.ShapeType.rect,{x:0.18,y:y+0.34,w:12.97,h:h-0.34,fill:{color:"FFFFFF"},line:{color:C.greyL,width:0.75}});
+        var n=(arr||[]).length;
+        var fs=n<=5?9.5:(n<=7?8.5:(n<=9?7.5:7));
+        var ls=n<=5?1.1:(n<=7?1.03:0.98);
+        s.addText(swotRuns(arr),{x:0.34,y:y+0.42,w:12.65,h:h-0.5,fontFace:F,fontSize:fs,color:C.black,align:"left",valign:"top",lineSpacingMultiple:ls});
+      }
+      var s2 = base("SWOT Analysis (1/2)");
+      var y2=1.05, h2=2.82, gapY2=0.2;
+      swotPanel(s2,"STRENGTHS",SWp.strengths,y2,h2,C.gold,"FFFFFF"); y2+=h2+gapY2;
+      swotPanel(s2,"WEAKNESSES",SWp.weaknesses,y2,h2,C.greyM,"000000");
+      foot(s2,asOnTxt+" Each quadrant lists every point flagged from the current data.");
+
+      var s3 = base("SWOT Analysis (2/2)");
+      var y3=1.05, h3=2.82;
+      swotPanel(s3,"OPPORTUNITIES",SWp.opportunities,y3,h3,C.tan,"000000"); y3+=h3+gapY2;
+      swotPanel(s3,"THREATS",SWp.threats,y3,h3,C.black,"FFFFFF");
+      foot(s3,asOnTxt+" Each quadrant lists every point flagged from the current data.");
     }
 
     /* ---- MF ANALYSIS ---- */
@@ -2389,7 +2565,7 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
       var hdr=[""].concat(model.overlap.funds.map(function(f,i){return (i+1);}));
       ov.push(hdr);
       model.overlap.matrix.forEach(function(row,i){ ov.push([(i+1)+". "+model.overlap.funds[i]].concat(row)); });
-      ov.push([]); ov.push(["Legend: diagonal=100; <15 low; 15-30 moderate; 30-50 high; >50 very high"]);
+      ov.push([]); ov.push(["Legend: diagonal=100; <15 low; 15-30 moderate; 30-50 high; >50 very high. Pairs ≥99.50% shown as 100.00% (full match)."]);
       aoa("Overlap Matrix",ov,{cols:[{wch:40}].concat(model.overlap.funds.map(function(){return {wch:6};}))});
     }
     /* 8. Performance */
@@ -2434,8 +2610,29 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
     }
 
     /* 9. Observations */
-    var ob=[["Portfolio Observations"],[]];
-    model.observations.forEach(function(o,i){ ob.push([(i+1),o]); });
+    var ob=[["PORTFOLIO OBSERVATIONS"],[]];
+    var Oxl = model.observations || {currentPortfolio:{}, swot:{}};
+    var CPxl = Oxl.currentPortfolio||{}, SWxl = Oxl.swot||{};
+    function cpRowsXl(letter,label,arr){
+      ob.push([letter+".  "+label]);
+      (arr&&arr.length? arr : ["Not available."]).forEach(function(t){ ob.push(["", t]); });
+      ob.push([]);
+    }
+    function swRowsXl(label,arr,emptyTxt){
+      ob.push([label]);
+      (arr&&arr.length? arr : [emptyTxt]).forEach(function(t){ ob.push(["", t]); });
+      ob.push([]);
+    }
+    ob.push(["\u2501\u2501 1. CURRENT PORTFOLIO \u2501\u2501"]); ob.push([]);
+    cpRowsXl("a","Based on Asset Allocation",CPxl.assetAllocation);
+    cpRowsXl("b","Based on Product Allocation",CPxl.productAllocation);
+    cpRowsXl("c","Based on AMC Allocation",CPxl.amcAllocation);
+    cpRowsXl("d","Based on Liquidity",CPxl.liquidity);
+    ob.push(["\u2501\u2501 2. SWOT ANALYSIS \u2501\u2501"]); ob.push([]);
+    swRowsXl("STRENGTHS",SWxl.strengths,"No notable strengths flagged from the current data.");
+    swRowsXl("WEAKNESSES",SWxl.weaknesses,"No notable weaknesses flagged from the current data.");
+    swRowsXl("OPPORTUNITIES",SWxl.opportunities,"No opportunities flagged from the current data.");
+    swRowsXl("THREATS",SWxl.threats,"No notable threats flagged from the current data.");
     aoa("Observations",ob,{cols:[{wch:4},{wch:140}]});
 
     return wb;
@@ -3373,7 +3570,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
     if(!ovSel || ovSel.length!==ov.funds.length) ovSel=ov.funds.map(function(){return true;});
     var checks=ov.funds.map(function(f,i){return '<label><input type="checkbox" data-i="'+i+'" '+(ovSel[i]?'checked':'')+'> '+(i+1)+'. '+f+'</label>';}).join('');
     s.innerHTML='<div class="card"><h3>Overlap Matrix — Mutual Funds / PMS</h3>'+
-      '<div class="sub">Overlap = Σ min(weight A, weight B) across stocks held in both funds. Analytics as on '+model.meta.dataDates.analytics+'.</div>'+
+      '<div class="sub">Overlap = Σ min(weight A, weight B) across stocks held in both funds (pairs ≥99.50% shown as a full 100% match). Analytics as on '+model.meta.dataDates.analytics+'.</div>'+
       '<div class="ovpanel">'+
         '<div class="ovtop"><button class="btn" id="ovImg">⬇ Download overlap as PNG</button>'+
           '<label>Show only pairs ≥ <b id="ovThVal">0</b>% <input type="range" id="ovTh" class="ovslider" min="0" max="100" value="0" step="1"></label>'+
@@ -3425,7 +3622,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
     x.fillStyle='#BD9568'; x.font='bold 17px Cambria'; x.textAlign='left'; x.textBaseline='alphabetic';
     x.fillText('OVERLAP MATRIX — MUTUAL FUNDS / PMS',pad,pad+10);
     x.fillStyle='#C9BFB0'; x.font='11px Cambria';
-    x.fillText('Overlap = Σ min(weight A, weight B) across stocks held in both funds  ·  Showing pairs with overlap ≥ '+ovTh+'%',pad,pad+28);
+    x.fillText('Overlap = Σ min(weight A, weight B) across stocks held in both funds (≥99.50% = full match)  ·  Showing pairs with overlap ≥ '+ovTh+'%',pad,pad+28);
     var ox=pad+nameW, oy=pad+44;
     x.textAlign='center'; x.textBaseline='middle'; x.font='bold 11px Cambria'; x.fillStyle='#EDE6DA';
     for(var c=0;c<k;c++) x.fillText(String(c+1),ox+c*cell+cell/2,oy+lab/2);
@@ -3449,12 +3646,42 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
     return cv;
   }
   function downloadOvImage(ov){ var cv=overlapCanvas(ov); if(!cv){ alert('No funds with overlap >= the current threshold. Lower the slider.'); return; } var a=document.createElement('a'); a.href=cv.toDataURL('image/png'); a.download='Overlap Matrix_'+model.meta.familyName+'_'+model.meta.asOnDate+'.png'; a.click(); }
+  /* Drops fund rows with NO real return value across the bucket's columns (unmatched
+     instruments or matched-but-blank records), and cascades to drop a category's sub-header
+     + benchmark row if zero funds remain under it. Shared by the dashboard Performance tab
+     and the PPTX Performance slide (NOT the XLSX Performance sheet, which stays a complete
+     raw data dump by design). */
+  window.filterPerfBuckets = function(buckets){
+    function hasReturn(r, cols){
+      for (var i=0;i<cols.length;i++){ var v=(r.r||{})[cols[i]]; if (v!=null && !isNaN(v)) return true; }
+      return false;
+    }
+    function filterBucket(bk){
+      var cols=bk.cols, out=[], buf=[], bufHasFund=false;
+      function flush(benchRow){
+        if (bufHasFund){ out=out.concat(buf); if (benchRow) out.push(benchRow); }
+        buf=[]; bufHasFund=false;
+      }
+      (bk.rows||[]).forEach(function(r){
+        if (r.type==='sub'){ flush(); buf=[r]; bufHasFund=false; return; }
+        if (r.type==='fund'){ if (hasReturn(r,cols)){ buf.push(r); bufHasFund=true; } return; }
+        if (r.type==='bench'){ flush(r); return; }
+        buf.push(r);
+      });
+      flush();
+      return {key:bk.key, cols:bk.cols, mcap:bk.mcap, debt:bk.debt, rows:out};
+    }
+    return (buckets||[]).map(filterBucket).filter(function(bk){ return bk.rows.length>0; });
+  };
+
   function renderPerf(){
     var s=document.getElementById('s-perf'); var html='';
     if(!model.performance.buckets.length){ s.innerHTML='<div class="card"><div class="empty">No performance data available.</div></div>'; document.getElementById('s-perf').innerHTML=html||s.innerHTML; return; }
     var P=model.performance;
     if(P.hasDirect){ if(P.plan!=='dir') P.plan='reg'; P.buckets=(P.plan==='dir')?P.directList:P.regularList; }
     var planDir=(P.hasDirect&&P.plan==='dir');
+    var _visPerfBuckets=window.filterPerfBuckets(P.buckets);
+    if(!_visPerfBuckets.length){ s.innerHTML='<div class="card"><div class="empty">No performance data available.</div></div>'; return; }
     var asOn=planDir?(P.directAsOn||model.meta.dataDates.performance):model.meta.dataDates.performance;
     if(P.hasDirect){
       var pbtn=function(id,lab,on,pos){ var b='font-family:Cambria;font-size:13px;font-weight:bold;padding:7px 22px;cursor:pointer;border:1.5px solid #BD9568;outline:none;'; b+=on?'background:#BD9568;color:#fff;':'background:#fff;color:#BD9568;'; b+=(pos==='l')?'border-radius:6px 0 0 6px;':'border-radius:0 6px 6px 0;border-left:none;'; return '<button id="'+id+'" type="button" style="'+b+'">'+lab+'</button>'; };
@@ -3464,7 +3691,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
         '<span class="sub" style="margin:0;">Showing <b>'+(planDir?'Direct':'Regular')+'</b>-plan returns &amp; NAVs (as on '+asOn+'). PPTX / XLSX exports follow this selection.</span>'+
         '</div></div>';
     }
-    model.performance.buckets.forEach(function(bk){
+    _visPerfBuckets.forEach(function(bk){
       var cols=bk.cols.slice(); var head='<th>Scheme</th><th>Inception</th><th>AUM (Cr.)</th>'+cols.map(function(c){return '<th>'+c+'</th>';}).join('');
       if(bk.mcap) head+='<th>Large</th><th>Mid</th><th>Small</th><th>Others</th>';
       if(bk.debt) head+='<th>YTM</th><th>Avg Mat</th><th>Mod Dur</th>';
@@ -3529,8 +3756,37 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
   }
   function renderObs(){
     var s=document.getElementById('s-obs');
-    var li=model.observations.map(function(o,i){return '<li><span class="n">'+(i+1)+'</span><p>'+o+'</p></li>';}).join('');
-    s.innerHTML='<div class="card"><h3>Portfolio Observations</h3><ul class="obs">'+li+'</ul></div>';
+    var O=model.observations||{currentPortfolio:{},swot:{}};
+    var CPd=O.currentPortfolio||{}, SWd=O.swot||{};
+    function pj(arr){ return (arr&&arr.length) ? arr.map(function(t){return '<p style="margin:0 0 6px 0;">'+t+'</p>';}).join('') : '<p style="margin:0;color:#999;">Not available.</p>'; }
+    function cpCard(label,arr){
+      return '<div style="background:#fff;border:1px solid #D9D9D9;border-left:4px solid #BD9568;border-radius:4px;padding:12px 14px;margin-bottom:12px;">'+
+        '<div style="font-weight:bold;color:#BD9568;font-size:12.5px;letter-spacing:.03em;text-transform:uppercase;margin-bottom:6px;">'+label+'</div>'+
+        '<div style="font-size:13px;color:#000;line-height:1.5;">'+pj(arr)+'</div></div>';
+    }
+    function swotList(arr,emptyTxt){
+      if(!arr||!arr.length) return '<p style="margin:6px 0 0 0;color:#777;font-size:12px;font-style:italic;">'+emptyTxt+'</p>';
+      return '<ul style="margin:6px 0 0 0;padding-left:18px;">'+arr.map(function(t){return '<li style="margin-bottom:7px;font-size:12.5px;line-height:1.45;">'+t+'</li>';}).join('')+'</ul>';
+    }
+    function quadrant(title,arr,bg,fg,emptyTxt){
+      return '<div style="border:1px solid #D9D9D9;border-radius:4px;overflow:hidden;">'+
+        '<div style="background:'+bg+';color:'+fg+';font-weight:bold;font-size:13px;letter-spacing:.04em;text-transform:uppercase;padding:8px 12px;">'+title+'</div>'+
+        '<div style="padding:10px 14px 14px 14px;background:#fff;">'+swotList(arr,emptyTxt)+'</div></div>';
+    }
+    var html='<div class="card"><h3>1. Current Portfolio</h3>'+
+      cpCard('a. Based on Asset Allocation',CPd.assetAllocation)+
+      cpCard('b. Based on Product Allocation',CPd.productAllocation)+
+      cpCard('c. Based on AMC Allocation',CPd.amcAllocation)+
+      cpCard('d. Based on Liquidity',CPd.liquidity)+
+      '</div>'+
+      '<div class="card"><h3>2. SWOT Analysis</h3>'+
+      '<div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;">'+
+      quadrant('Strengths',SWd.strengths,'#BD9568','#FFFFFF','No notable strengths flagged from the current data.')+
+      quadrant('Weaknesses',SWd.weaknesses,'#BFBFBF','#000000','No notable weaknesses flagged from the current data.')+
+      quadrant('Opportunities',SWd.opportunities,'#DBC8B2','#000000','No opportunities flagged from the current data.')+
+      quadrant('Threats',SWd.threats,'#000000','#FFFFFF','No notable threats flagged from the current data.')+
+      '</div></div>';
+    s.innerHTML=html;
   }
 
   function renderAlloc(surfId, data, title){
