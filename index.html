@@ -1269,8 +1269,24 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
     var profile = eqShare>=85?"an aggressive risk profile":(eqShare>=60?"a growth-oriented risk profile":(eqShare>=40?"a balanced risk profile":"a conservative risk profile"));
     var mixParts = presentAssets.map(function(a){ return pct2(aMap[a].cmv/totalCMV*100)+" "+a.toLowerCase(); });
     var mcapStr = equityAnalytics.mcap.map(function(m){ return pct2(m.pct)+" "+m.k.toLowerCase().replace(" cap","-cap"); }).join(", ");
+    var _mcSkew="";
+    if (equityAnalytics.hasData){
+      var _mcCP={}; equityAnalytics.mcap.forEach(function(m){ _mcCP[m.k]=m.pct; });
+      var _lgCP=_mcCP["Large Cap"]||0, _mdsmCP=(_mcCP["Mid Cap"]||0)+(_mcCP["Small Cap"]||0);
+      _mcSkew = _lgCP>=60?" — a large-cap-led construction":(_mdsmCP>=55?" — a mid/small-cap tilt":" — broadly spread across market caps");
+    }
     CP.assetAllocation.push("The overall portfolio asset allocation reflects "+profile+", with "+mixParts.join(", ")+
-      (equityAnalytics.hasData?(". Within the equity sleeve, market-cap allocation is distributed as: "+mcapStr+"."):"."));
+      (equityAnalytics.hasData?(". Within the equity sleeve, market-cap allocation is distributed as: "+mcapStr+_mcSkew+"."):"."));
+    var _debtShareCP=(aMap["Debt"]?aMap["Debt"].cmv:0)/totalCMV*100;
+    if (debtAnalytics && debtAnalytics.hasData && _debtShareCP>=5){
+      var _hqCP=debtAnalytics.ratings.filter(function(r){return /sov|aaa|a1\+/i.test(r.k);}).reduce(function(s,r){return s+r.pct;},0);
+      var _dqCP=[];
+      if (debtAnalytics.avgYTM!=null) _dqCP.push("an average yield to maturity of "+pct2(debtAnalytics.avgYTM));
+      if (debtAnalytics.avgModDur!=null) _dqCP.push("a modified duration of "+debtAnalytics.avgModDur.toFixed(2)+" years");
+      if (_dqCP.length){
+        CP.assetAllocation.push("The debt book carries "+_dqCP.join(" and ")+(_hqCP>=50?(", with "+pct2(_hqCP)+" in sovereign / AAA-equivalent paper, keeping credit and interest-rate risk well contained"):"")+".");
+      }
+    }
 
     // ============ 1b. CURRENT PORTFOLIO — Product Allocation ============
     var prodTot={};
@@ -1287,8 +1303,11 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
 
     // ============ 1c. CURRENT PORTFOLIO — AMC Allocation ============
     if (amcBreaches.length){
-      CP.amcAllocation.push(amcBreaches.map(function(b){return b.amc+" constitutes "+pct2(b.pct)+" of the mutual-fund allocation";}).join("; ")+
-        ", breaching Centricity's 20% per-AMC cap.");
+      CP.amcAllocation.push(amcBreaches.map(function(b){return b.amc+" ("+pct2(b.pct)+")";}).join(" and ")+" breach"+(amcBreaches.length>1?"":"es")+" Centricity's 20% per-AMC cap of the mutual-fund book.");
+      var _destCP=amcRows.filter(function(r){return !r.breach && r.pct>0 && r.amc && String(r.amc).trim();}).slice(0,3).map(function(r){return r.amc;});
+      if (_destCP.length){
+        CP.amcAllocation.push("Trimming "+amcBreaches.map(function(b){return b.amc;}).join(" and ")+" back toward the 20% cap and redeploying into other quality houses already held ("+_destCP.join(", ")+") would reduce house-level concentration without disturbing the asset mix.");
+      }
     } else if (amcRows.length){
       CP.amcAllocation.push("No single fund house exceeds Centricity's 20% per-AMC cap (largest is "+amcRows[0].amc+" at "+pct2(amcRows[0].pct)+"), indicating well-diversified AMC exposure across the mutual-fund book.");
     }
@@ -1347,13 +1366,26 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
     if (mfCMVtot>0 && passivePct>=10 && passivePct<=75){
       SW.strengths.push("The mutual-fund book blends active and passive strategies ("+pct2(passivePct)+" in index funds/ETFs), balancing cost-efficiency with alpha-seeking mandates.");
     }
+    (function(){
+      var _slvS={}; rows.forEach(function(h){ if(h.xirrFrac==null||h.bmxirrFrac==null||!(h.cmvCr>0)) return; var a=h.asset||"Other"; var g=_slvS[a]||(_slvS[a]={cmv:0,wx:0,wb:0}); g.cmv+=h.cmvCr; g.wx+=h.xirrFrac*h.cmvCr; g.wb+=h.bmxirrFrac*h.cmvCr; });
+      var _bestS=null; Object.keys(_slvS).forEach(function(a){ var g=_slvS[a]; g.xirr=g.wx/g.cmv*100; g.bm=g.wb/g.cmv*100; g.w=g.cmv/totalCMV*100; if(g.w>=10 && (g.xirr-g.bm)>=0.5 && (_bestS==null||(g.xirr-g.bm)>(_bestS.xirr-_bestS.bm))) _bestS={a:a,xirr:g.xirr,bm:g.bm,w:g.w}; });
+      if (_bestS){
+        SW.strengths.push("The "+_bestS.a+" sleeve ("+pct2(_bestS.w)+" of the book) is the standout performer, at "+pct2(_bestS.xirr)+" XIRR versus its blended benchmark "+pct2(_bestS.bm)+".");
+      }
+    })();
 
     // ---- WEAKNESSES ----
     var concFacts=[];
     presentAssets.forEach(function(a){ var p=aMap[a].cmv/totalCMV*100; if(p>=85) concFacts.push("a single asset class ("+a+", "+pct2(p)+")"); });
     if (topProdPct>=85) concFacts.push("a single product category ("+prodSorted[0]+", "+pct2(topProdPct)+")");
     if (amcBreaches.length) concFacts.push(amcBreaches.map(function(b){return b.amc+" ("+pct2(b.pct)+")";}).join(", ")+" of the mutual-fund book");
-    if (topSector && topSector.pct>=35) concFacts.push("a single equity sector ("+topSector.k+", "+pct2(topSector.pct)+" of the equity sleeve)");
+    var _sec3=(equityAnalytics.hasData?equityAnalytics.sectors.filter(function(x){return !/^others?$|unclassified|not\s*classified/i.test(String(x.k||"").trim());}).slice(0,3):[]);
+    var _sec3pct=_sec3.reduce(function(t,x){return t+x.pct;},0);
+    if (_sec3.length>=3 && _sec3pct>=50){
+      concFacts.push("the top 3 sectors ("+_sec3.map(function(x){return x.k+" "+pct2(x.pct);}).join(", ")+" = "+pct2(_sec3pct)+" of the equity sleeve, so the book effectively behaves as a three-sector portfolio)");
+    } else if (topSector && topSector.pct>=35){
+      concFacts.push("a single equity sector ("+topSector.k+", "+pct2(topSector.pct)+" of the equity sleeve)");
+    }
     if (topStock && topStock.pct>=10) concFacts.push("a single stock ("+topStock.k+", "+pct2(topStock.pct)+" of the equity sleeve)");
     if (concFacts.length){
       SW.weaknesses.push("The portfolio shows concentration in "+concFacts.join("; ")+" — this raises manager-, sector- and house-level concentration risk.");
@@ -1366,9 +1398,10 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
       SW.weaknesses.push("Several fund pairs show elevated overlap (e.g. "+p0[0]+" and "+p0[1]+" at "+pct2(p0[2])+"), resulting in redundant underlying holdings.");
     }
     if (equityAnalytics.hasData && equityAnalytics.stocks.length>=5){
-      var top5St = equityAnalytics.stocks.slice(0,5).reduce(function(t,x){return t+x.pct;},0);
-      if (top5St>=40){
-        SW.weaknesses.push("The top 5 stocks account for "+pct2(top5St)+" of the equity sleeve, indicating dependence on a limited number of return drivers.");
+      var _nTop=equityAnalytics.stocks.length>=10?10:5;
+      var _topSt=equityAnalytics.stocks.slice(0,_nTop).reduce(function(t,x){return t+x.pct;},0);
+      if (_topSt>=(_nTop===10?60:40)){
+        SW.weaknesses.push("The top "+_nTop+" stocks account for "+pct2(_topSt)+" of the equity sleeve, concentrating returns in a narrow set of names.");
       }
     }
     var under = rows.filter(function(h){ return h.xirrFrac!=null && h.bmxirrFrac!=null && h.xirrFrac<h.bmxirrFrac; });
@@ -1381,15 +1414,33 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
     if (lows.length>=3){
       SW.weaknesses.push(lows.length+" holdings each sit below 1.50% of the portfolio, adding complexity without materially changing exposure (over-diversification).");
     }
+    var _debtCMVw=aMap["Debt"]?aMap["Debt"].cmv:0;
+    if (_debtCMVw>0 && (_debtCMVw/totalCMV*100)>=10){
+      var _reLowY=/arbitrage|liquid|money\s*market|overnight|low\s*duration|ultra\s*short/i;
+      var _lowYCMV=0; rows.forEach(function(h){ if(String(h.asset||"").toLowerCase()==="debt" && _reLowY.test((h.category||"")+" "+(h.name||""))) _lowYCMV+=h.cmvCr; });
+      var _lowYpct=_debtCMVw?_lowYCMV/_debtCMVw*100:0;
+      if (_lowYpct>=50){
+        SW.weaknesses.push(pct2(_lowYpct)+" of the debt sleeve sits in low-yielding liquidity buckets (arbitrage / liquid / money-market / low-duration), capping the income the book generates; absent a near-term liquidity need, this can be consolidated and redeployed into higher-yielding debt PMS, AIFs or bonds/NCDs.");
+      }
+    }
     // ---- OPPORTUNITIES ----
+    var _reitPct=0; rows.forEach(function(h){ if(/reit|invit/i.test((h.name||"")+" "+(h.category||""))) _reitPct+=h.cmvCr; }); _reitPct=totalCMV?_reitPct/totalCMV*100:0;
+    var _clsReason={
+      "Debt":"a stabiliser that cushions equity drawdowns",
+      "Gold / Commodities":"an uncorrelated hedge that holds up when equity and debt both come under pressure",
+      "International / Global equity":"exposure across other economies and currencies, steadying returns when Indian markets underperform",
+      "Alternatives (PMS/AIF)":"less-correlated, higher-return avenues suited to the book's size",
+      "REITs / InvITs":"real-asset income and diversification"
+    };
     var underrep=[];
     if (eqShare<5) underrep.push("Equity");
     if (debtPct<5) underrep.push("Debt");
     if (goldPct<5) underrep.push("Gold / Commodities");
     if (intlPct<5) underrep.push("International / Global equity");
     if (altPct<5) underrep.push("Alternatives (PMS/AIF)");
+    if (_reitPct<2) underrep.push("REITs / InvITs");
     if (underrep.length){
-      SW.opportunities.push("The portfolio has limited or no exposure to "+underrep.join(", ")+"; selectively adding these would broaden diversification and open additional, less-correlated return sources.");
+      SW.opportunities.push("The portfolio has limited or no exposure to: "+underrep.map(function(c){return _clsReason[c]?(c+" ("+_clsReason[c]+")"):c;}).join("; ")+". Selectively adding these would broaden diversification and open less-correlated return sources.");
     }
     if (topProdPct>=85){
       SW.opportunities.push("Introducing selective PMS and AIF strategies — from Centricity's focused list — would broaden diversification across investment styles and create additional avenues for long-term return generation.");
@@ -1405,6 +1456,29 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
     if (lows.length>=3){
       SW.opportunities.push("Consolidating the "+lows.length+" sub-1.50% holdings would simplify monitoring and reporting without materially changing exposure.");
     }
+    if (equityAnalytics.hasData){
+      var _mcO={}; equityAnalytics.mcap.forEach(function(m){ _mcO[m.k]=m.pct; });
+      var _lgO=_mcO["Large Cap"]||0, _mdsmO=(_mcO["Mid Cap"]||0)+(_mcO["Small Cap"]||0);
+      if (_lgO>=55 || _mdsmO<25){
+        SW.opportunities.push("In the equity sleeve, large-cap exposure can be built cost-efficiently through index funds (the Nifty has a low probability of negative returns over 5–7 year horizons), reserving active mandates for the mid- and small-cap segments where security selection adds more value.");
+      }
+    }
+    if (goldPct>0 && goldPct<5){
+      var _cRet=null; rows.forEach(function(h){ if(h.commodity && h.xirrFrac!=null){ var _r=h.xirrFrac*100; if(_cRet==null||_r>_cRet) _cRet=_r; } });
+      if (_cRet!=null && _cRet>=20){
+        SW.opportunities.push("Gold / commodities have returned "+pct2(_cRet)+" yet represent only "+pct2(goldPct)+" of the book; a more strategic allocation to this uncorrelated asset would have added materially to returns.");
+      }
+    }
+    (function(){
+      var _slv={}; rows.forEach(function(h){ if(h.xirrFrac==null||!(h.cmvCr>0)) return; var a=h.asset||"Other"; var g=_slv[a]||(_slv[a]={cmv:0,wx:0}); g.cmv+=h.cmvCr; g.wx+=h.xirrFrac*h.cmvCr; });
+      var _ks=Object.keys(_slv); if(_ks.length<2) return;
+      _ks.forEach(function(a){ _slv[a].xirr=_slv[a].wx/_slv[a].cmv*100; _slv[a].w=_slv[a].cmv/totalCMV*100; });
+      var _big=_ks.slice().sort(function(a,b){return _slv[b].w-_slv[a].w;})[0];
+      var _best=_ks.slice().sort(function(a,b){return _slv[b].xirr-_slv[a].xirr;})[0];
+      if (_slv[_big].w>=50 && _best!==_big && (_slv[_best].xirr-_slv[_big].xirr)>=3){
+        SW.opportunities.push("About "+pct2(_slv[_big].w)+" of the book (the "+_big+" sleeve, "+pct2(_slv[_big].xirr)+" XIRR) anchors stability but caps upside relative to the "+_best+" sleeve ("+pct2(_slv[_best].xirr)+"); if the family's horizon and risk appetite allow, gradually rotating a portion toward higher-return sleeves would lift return potential without a disproportionate rise in risk.");
+      }
+    })();
 
     // ---- THREATS ----
     var mktConcFacts=[];
@@ -1419,25 +1493,31 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
     if (liqPie.length && closeEndedPct>=20){
       SW.threats.push("Close-ended / structured instruments account for "+pct2(closeEndedPct)+" of the portfolio; liquidity risk should be monitored around their lock-in and redemption windows.");
     }
-    /* ---- Top-5 Contributors / Laggards vs benchmark (portfolio-wide, ranked by Fund XIRR then % allocation) ----
-       Moved here (was right before the function's final return) so the Threats section below can reuse the
-       exact same laggard list as the dedicated "Fund IRR" tab, instead of a second, slightly different
-       XIRR-based computation. */
+    /* ---- Top-5 Contributors / Laggards by sum-weighted contribution (portfolio-wide) ----
+       Contribution = % allocation x Fund XIRR (each holding's share of the portfolio IRR). Contributors
+       = highest contribution; laggards = lowest (negative where a holding is loss-making). 'drags'
+       (holdings with a negative contribution) feeds the Threats narrative below. */
     var contribLag = (function(){
       var byName={};
       rows.forEach(function(h){
-        if(h.xirrFrac==null || h.bmxirrFrac==null || !(h.cmvCr>0)) return;
+        if(h.xirrFrac==null || !(h.cmvCr>0)) return;
         var k=h.name||'—';
-        var g=byName[k]||(byName[k]={name:k, cmv:0, wx:0, wb:0});
-        g.cmv+=h.cmvCr; g.wx+=h.xirrFrac*h.cmvCr; g.wb+=h.bmxirrFrac*h.cmvCr;
+        var g=byName[k]||(byName[k]={name:k, cmv:0, wx:0});
+        g.cmv+=h.cmvCr; g.wx+=h.xirrFrac*h.cmvCr;
       });
       var arr=Object.keys(byName).map(function(k){
-        var g=byName[k], f=g.wx/g.cmv, b=g.wb/g.cmv;
-        return {name:g.name, cmv:g.cmv, alloc:(totalCMV?g.cmv/totalCMV*100:0), fund:f*100, bench:b*100, dev:(f-b)*100};
+        var g=byName[k], f=g.wx/g.cmv, alloc=(totalCMV?g.cmv/totalCMV*100:0);
+        /* sum-weighted contribution to portfolio IRR = % allocation x Fund XIRR (in %-points) */
+        return {name:g.name, cmv:g.cmv, alloc:alloc, fund:f*100, contrib:alloc*f};
       });
-      function byIRR(a,b){ return (b.fund-a.fund) || (b.alloc-a.alloc) || (b.cmv-a.cmv); }
-      return { contributors: arr.filter(function(x){return x.dev>0;}).sort(byIRR).slice(0,5),
-               laggards:     arr.filter(function(x){return x.dev<0;}).sort(byIRR).slice(0,5) };
+      var desc=arr.slice().sort(function(a,b){ return (b.contrib-a.contrib) || (b.alloc-a.alloc) || (b.cmv-a.cmv); });
+      var contributors=desc.slice(0,5);
+      var cset={}; contributors.forEach(function(x){cset[x.name]=1;});
+      var laggards=arr.slice().filter(function(x){return !cset[x.name];})
+                     .sort(function(a,b){ return (a.contrib-b.contrib) || (a.alloc-b.alloc) || (a.cmv-b.cmv); })
+                     .slice(0,5);
+      var drags=arr.filter(function(x){return x.contrib<0;}).sort(function(a,b){ return a.contrib-b.contrib; });
+      return { contributors: contributors, laggards: laggards, drags: drags };
     })();
 
     // Performance Sheet basis — trailing fund return vs the SAME category benchmark it is paired with
@@ -1474,11 +1554,12 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
     pushPerfLaggardBullet("1Y","trailing 1-year");
     pushPerfLaggardBullet("3Y","trailing 3-year");
     pushPerfLaggardBullet("5Y","trailing 5-year");
-    // Fund IRR basis — same laggard list as the dedicated Fund IRR tab (Fund XIRR vs Benchmark XIRR, pooled by
-    // instrument name, ranked by Fund XIRR then % allocation; transaction-based when an IRR file is loaded).
-    if (contribLag.laggards.length){
-      var irrTop = contribLag.laggards.slice(0,3).map(function(x){ return x.name+" ("+pct2(x.fund)+" vs "+pct2(x.bench)+")"; });
-      SW.threats.push("On a Fund IRR basis, "+contribLag.laggards.length+" holding"+(contribLag.laggards.length>1?"s are":" is")+" trailing "+(contribLag.laggards.length>1?"their":"its")+" benchmark IRR (e.g. "+irrTop.join(", ")+"); sustained IRR shortfall versus benchmark would drag on long-term portfolio returns if not addressed.");
+    // Fund IRR basis — holdings with a NEGATIVE weighted contribution to portfolio IRR (Contribution =
+    // % allocation x Fund XIRR), i.e. loss-making positions dragging overall returns; transaction-based
+    // when an IRR file is loaded.
+    if (contribLag.drags.length){
+      var irrTop = contribLag.drags.slice(0,3).map(function(x){ return x.name+" ("+pct2(x.fund)+" IRR, "+pct2(x.contrib)+" contribution)"; });
+      SW.threats.push("On a Fund IRR basis, "+contribLag.drags.length+" holding"+(contribLag.drags.length>1?"s are":" is")+" making a negative weighted contribution to portfolio IRR (e.g. "+irrTop.join(", ")+"); these positions are dragging overall returns and warrant review.");
     }
 
     var obs = {currentPortfolio:CP, swot:SW};
@@ -1906,9 +1987,10 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
     /* ---- 5c. FUND IRR — TOP CONTRIBUTORS / LAGGARDS ---- */
     /* ── Portfolio Cost PPT slide ── */
     if(SHOW('cost'))(function(){
-      var existingSlide=base('PORTFOLIO COST ANALYSIS');
       var F='Cambria'; var REF=window.REFDATA||{};
       var CD=window.__COST_DATA||null;
+      var _cdist=(CD&&CD.dist)?String(CD.dist):'';
+      var existingSlide=base('PORTFOLIO COST ANALYSIS'+(_cdist?' — '+_cdist.toUpperCase():''));
       var totalCMV=(CD&&CD.totalCMV)||model.totalCMV||1; var wtdSum=CD?CD.wtdSum:0;
       var holdings2=[];
       if(CD&&CD.schemes){
@@ -1997,7 +2079,7 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
           }
         });
         s.addTable(tblRows,{x:startX,y:tableTopY,w:colW.reduce(function(a,b){return a+b;},0),colW:colW,rowH:ROW_H_COST,fontFace:F,border:{type:'solid',pt:0.3,color:'D9D9D9'}});
-        s.addText('Weighted avg cost = Sum(Expense Ratio x CMV weight). Source: Reference data / AMC factsheets.',{x:0.18,y:7.1,w:12,h:0.2,fontFace:F,fontSize:7,color:'999999'});
+        s.addText('Weighted avg cost = Sum(Expense Ratio x CMV weight). Source: Reference data / AMC factsheets.'+(_cdist?'  Filtered to distributor: '+_cdist+' (weights re-based to this distributor).':''),{x:0.18,y:7.1,w:12,h:0.2,fontFace:F,fontSize:7,color:'999999'});
       });
     })();
 
@@ -2086,30 +2168,30 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
       var U=model.unit;
       var sx=base('Fund IRR — Top Contributors & Laggards');
       function pctC(v){ return (v==null||isNaN(v))?'—':v.toFixed(2)+'%'; }
-      function buildTbl(list, titleTxt, titleFill, titleColor, devColor, emptyTxt){
+      function buildTbl(list, titleTxt, titleFill, titleColor, emptyTxt){
         var hc=function(t,al){ return cell(t,{bold:true,color:'FFFFFF',fill:{color:'808080'},align:al,fontSize:9,valign:'middle'}); };
-        var title=[cell(titleTxt,{bold:true,color:titleColor,fill:{color:titleFill},align:'center',fontSize:11.5,colspan:6,valign:'middle'})];
-        var hdr=[hc('Instrument','left'),hc('Market Value ('+U.lab+')','center'),hc('% Allocation','center'),hc('Fund XIRR (%)','center'),hc('Benchmark XIRR (%)','center'),hc('Deviation','center')];
+        var title=[cell(titleTxt,{bold:true,color:titleColor,fill:{color:titleFill},align:'center',fontSize:11.5,colspan:5,valign:'middle'})];
+        var hdr=[hc('Instrument','left'),hc('Market Value ('+U.lab+')','center'),hc('% Allocation','center'),hc('Fund XIRR (%)','center'),hc('Contribution (%)','center')];
         var trows=[title,hdr];
         if(list.length){
           list.forEach(function(x){
+            var cc=(x.contrib!=null&&x.contrib<0)?C.red:'1E5631';
             trows.push([ cell(x.name,{align:'left',fontSize:9.5,color:C.black,bold:true}),
               cell(U.t(x.cmv),{align:'center',fontSize:9.5,color:C.black}),
               cell(pctC(x.alloc),{align:'center',fontSize:9.5,color:C.black}),
               cell(pctC(x.fund),{align:'center',fontSize:9.5,color:C.black}),
-              cell(pctC(x.bench),{align:'center',fontSize:9.5,color:C.black}),
-              cell(pctC(x.dev),{align:'center',fontSize:9.5,bold:true,color:devColor}) ]);
+              cell(pctC(x.contrib),{align:'center',fontSize:9.5,bold:true,color:cc}) ]);
           });
-        } else { trows.push([cell(emptyTxt,{align:'center',fontSize:9.5,color:'888888',colspan:6})]); }
+        } else { trows.push([cell(emptyTxt,{align:'center',fontSize:9.5,color:'888888',colspan:5})]); }
         return trows;
       }
-      var colW=[3.7,1.6,1.55,1.55,1.75,1.15];
+      var colW=[4.20,1.90,1.75,1.70,1.75];
       var tx=(W-11.30)/2;
-      sx.addTable(buildTbl(cl.contributors,'TOP 5 CONTRIBUTORS (As per Fund XIRR)','C6E0B4','1E5631',C.green,'No holdings outperformed their benchmark.'),
+      sx.addTable(buildTbl(cl.contributors,'TOP 5 CONTRIBUTORS (By Weighted Contribution)','C6E0B4','1E5631','No holdings with a positive contribution.'),
         {x:tx,y:1.20,w:11.30,colW:colW,rowH:0.34,fontFace:F,fontSize:9.5,valign:'middle',border:{type:'solid',color:C.greyL,pt:0.75}});
-      sx.addTable(buildTbl(cl.laggards,'TOP 5 LAGGARDS (As per Fund XIRR)','931621','FFFFFF',C.red,'No holdings trailed their benchmark.'),
+      sx.addTable(buildTbl(cl.laggards,'TOP 5 LAGGARDS (By Weighted Contribution)','931621','FFFFFF','No laggards to show.'),
         {x:tx,y:4.18,w:11.30,colW:colW,rowH:0.34,fontFace:F,fontSize:9.5,valign:'middle',border:{type:'solid',color:C.greyL,pt:0.75}});
-      foot(sx,'*Holdings ranked by Fund XIRR, then % allocation. Deviation = Fund XIRR - Benchmark XIRR. '+(model.irrActive?('Transaction-based XIRR as on '+(model.irrAsOn||'—')+'.'):'XIRR/BMXIRR from the base file.')+' Portfolio as on '+model.meta.asOnDate+'.');
+      foot(sx,'*Holdings ranked by sum-weighted contribution (Contribution = % Allocation × Fund XIRR). '+(model.irrActive?('Transaction-based XIRR as on '+(model.irrAsOn||'—')+'.'):'XIRR from the base file.')+' Portfolio as on '+model.meta.asOnDate+'.');
     })();
 
     /* ---- 6. PERFORMANCE ---- */
@@ -2175,7 +2257,7 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
         s.addShape(pptx.ShapeType.roundRect,{x:0.18,y:y,w:12.97,h:h,rectRadius:0.04,fill:{color:"FBF7F1"},line:{color:C.gold,width:0.75}});
         s.addShape(pptx.ShapeType.rect,{x:0.18,y:y,w:0.09,h:h,fill:{color:C.gold},line:{type:"none"}});
         s.addText(label,{x:0.42,y:y+0.06,w:12.5,h:0.26,fontFace:F,fontSize:10.5,bold:true,color:C.gold,align:"left"});
-        s.addText(cpBody(arr),{x:0.42,y:y+0.32,w:12.5,h:h-0.4,fontFace:F,fontSize:10,color:"222222",align:"left",valign:"top",lineSpacingMultiple:1.12});
+        s.addText(cpBody(arr),{x:0.42,y:y+0.32,w:12.5,h:h-0.4,fontFace:F,fontSize:9.5,color:"222222",align:"left",valign:"top",lineSpacingMultiple:1.05});
       }
       var s1 = base("Portfolio Observations \u2014 Current Portfolio");
       var yy=1.05, hh=1.38, gapY1=0.12;
@@ -2388,19 +2470,16 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
             _ucell('beta'),_ucell('sd'),_ucell('alpha'),_ucell('sortino'),_ucell('sharpe'),_ucell('dc'),_ucell('r3y',true)
           ]);
 
-          /* Benchmark rows */
+          /* Benchmark rows — 3Y Rolling Return only (risk ratios removed per request) */
           bmKeys.forEach(function(bmKey){
             var bm=BMDATA[bmKey]||{};
-            function _bc(m,isP){
-              var v=bm[m];
-              if(!_isN(v)) return cell('—',{align:'center',fill:{color:'F0F0F0'},color:'888888',fontSize:8});
-              return cell(isP?_pv(v):_fv(v),{align:'center',fill:{color:'F0F0F0'},color:'444444',fontSize:8});
-            }
+            function _bd(){return cell('—',{align:'center',fill:{color:'F0F0F0'},color:'888888',fontSize:8});}
             trows.push([
               cell('⬚ '+bmKey,{fill:{color:'F0F0F0'},color:'444444',italic:true,fontSize:8}),
               cell('—',{align:'center',fill:{color:'F0F0F0'},color:'888888',fontSize:8}),
               cell('—',{align:'center',fill:{color:'F0F0F0'},color:'888888',fontSize:8}),
-              _bc('beta'),_bc('sd'),_bc('alpha'),_bc('sortino'),_bc('sharpe'),_bc('dc'),_bc('r3y',true)
+              _bd(),_bd(),_bd(),_bd(),_bd(),_bd(),
+              (_isN(bm.r3y)?cell(_pv(bm.r3y),{align:'center',fill:{color:'F0F0F0'},color:'444444',fontSize:8}):_bd())
             ]);
           });
 
@@ -3726,32 +3805,32 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
     var cl=model.contribLag||{contributors:[],laggards:[]};
     var U=model.unit;
     if(!cl.contributors.length && !cl.laggards.length){
-      s.innerHTML='<div class="card"><div class="empty">No Fund XIRR / Benchmark XIRR data available. Provide XIRR % and BMXIRR % in the base file (or upload an IRR Transactions file) to see portfolio contributors and laggards.</div></div>';
+      s.innerHTML='<div class="card"><div class="empty">No Fund XIRR data available. Provide XIRR % in the base file (or upload an IRR Transactions file) to see portfolio contributors and laggards.</div></div>';
       return;
     }
     function pc(v){ return (v==null||isNaN(v))?'—':v.toFixed(2)+'%'; }
     function th(t,al){ return '<th style="background:#808080;color:#fff;text-align:'+al+';padding:7px 9px;font-size:11.5px;font-weight:600;border:1px solid #6f6f6f">'+t+'</th>'; }
-    function tbl(title, list, titleBg, titleFg, devCol, emptyTxt){
+    function tbl(title, list, titleBg, titleFg, emptyTxt){
       var BD='border:1px solid #E3DCD3;';
-      var head='<tr><td colspan="6" style="background:'+titleBg+';color:'+titleFg+';font-weight:700;font-size:13.5px;text-align:center;padding:9px 10px;letter-spacing:.02em;'+BD+'">'+title+'</td></tr>'+
-        '<tr>'+th('Instrument','left')+th('Market Value ('+U.lab+')','center')+th('% Allocation','center')+th('Fund XIRR (%)','center')+th('Benchmark XIRR (%)','center')+th('Deviation','center')+'</tr>';
+      var head='<tr><td colspan="5" style="background:'+titleBg+';color:'+titleFg+';font-weight:700;font-size:13.5px;text-align:center;padding:9px 10px;letter-spacing:.02em;'+BD+'">'+title+'</td></tr>'+
+        '<tr>'+th('Instrument','left')+th('Market Value ('+U.lab+')','center')+th('% Allocation','center')+th('Fund XIRR (%)','center')+th('Contribution (%)','center')+'</tr>';
       var body=list.length?list.map(function(x){
+        var cc=(x.contrib!=null&&x.contrib<0)?'#931621':'#1E5631';
         return '<tr>'+
           '<td style="'+BD+'text-align:left;padding:7px 9px;font-weight:600">'+x.name+'</td>'+
           '<td style="'+BD+'text-align:center;padding:7px 9px">'+U.t(x.cmv)+'</td>'+
           '<td style="'+BD+'text-align:center;padding:7px 9px">'+pc(x.alloc)+'</td>'+
           '<td style="'+BD+'text-align:center;padding:7px 9px">'+pc(x.fund)+'</td>'+
-          '<td style="'+BD+'text-align:center;padding:7px 9px">'+pc(x.bench)+'</td>'+
-          '<td style="'+BD+'text-align:center;padding:7px 9px;font-weight:700;color:'+devCol+'">'+pc(x.dev)+'</td></tr>';
-      }).join(''):'<tr><td colspan="6" style="'+BD+'text-align:center;padding:12px;color:#999">'+emptyTxt+'</td></tr>';
+          '<td style="'+BD+'text-align:center;padding:7px 9px;font-weight:700;color:'+cc+'">'+pc(x.contrib)+'</td></tr>';
+      }).join(''):'<tr><td colspan="5" style="'+BD+'text-align:center;padding:12px;color:#999">'+emptyTxt+'</td></tr>';
       return '<table style="width:100%;border-collapse:collapse;margin-bottom:22px;border:1px solid #D9D9D9;font-family:Cambria">'+head+body+'</table>';
     }
-    var note = model.irrActive ? ('Fund &amp; Benchmark XIRR are transaction-based (as on '+(model.irrAsOn||'—')+').') : ('Fund &amp; Benchmark XIRR are taken from the base file.');
+    var note = model.irrActive ? ('Fund XIRR is transaction-based (as on '+(model.irrAsOn||'—')+').') : ('Fund XIRR is taken from the base file.');
     s.innerHTML='<div class="card">'+
       '<h3>Fund IRR — Top Contributors &amp; Laggards</h3>'+
-      '<div class="sub">Portfolio holdings ranked by Fund XIRR, then % allocation. Contributors beat their benchmark (Fund XIRR &gt; Benchmark XIRR); laggards trail it. '+note+' Portfolio as on '+model.meta.asOnDate+'.</div>'+
-      tbl('TOP 5 CONTRIBUTORS (As per Fund XIRR)', cl.contributors, '#C6E0B4', '#1E5631', '#2E7D32', 'No holdings outperformed their benchmark.')+
-      tbl('TOP 5 LAGGARDS (As per Fund XIRR)', cl.laggards, '#931621', '#FFFFFF', '#931621', 'No holdings trailed their benchmark.')+
+      '<div class="sub">Portfolio holdings ranked by sum-weighted contribution to portfolio IRR (Contribution = % Allocation &times; Fund XIRR). Top contributors add the most to portfolio return; laggards contribute the least (negative where the holding is loss-making). '+note+' Portfolio as on '+model.meta.asOnDate+'.</div>'+
+      tbl('TOP 5 CONTRIBUTORS (By Weighted Contribution)', cl.contributors, '#C6E0B4', '#1E5631', 'No holdings with a positive contribution.')+
+      tbl('TOP 5 LAGGARDS (By Weighted Contribution)', cl.laggards, '#931621', '#FFFFFF', 'No laggards to show.')+
       '</div>';
   }
   function renderObs(){
@@ -4345,19 +4424,16 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
         +'<td style="font-size:10px;color:#5C3E17;font-style:italic;">Avg of all '+uCnt+' funds · Risk Ratios file</td>'
         +'</tr>';
 
-      /* Benchmark rows */
+      /* Benchmark rows — 3Y Rolling Return only (risk ratios removed per request) */
       bmKeys.forEach(function(bmKey){
         var bm=BM[bmKey]||{};
-        function bc(m,pct_){
-          var v=bm[m];if(!isN(v)) return '<td class="n" style="color:#aaa;">—</td>';
-          return '<td class="n">'+(pct_?pv(v):fv(v))+'</td>';
-        }
+        var _d='<td class="n" style="color:#aaa;">—</td>';
         html_out+='<tr class="br">'
           +'<td class="tl"><span style="background:#e0e0e0;padding:1px 5px;border-radius:8px;font-size:9.5px;margin-right:5px;">BM</span><b>'+bmKey+'</b></td>'
           +'<td class="n">—</td><td class="n">—</td>'
-          +bc('beta')+bc('sd')+bc('alpha')+bc('sortino')+bc('sharpe')
-          +bc('corr')+bc('ir')+bc('dc')+bc('r3y',true)
-          +'<td style="font-size:10px;color:#555;">Benchmark risk ratios · May 2026</td>'
+          +_d+_d+_d+_d+_d+_d+_d+_d
+          +(isN(bm.r3y)?'<td class="n">'+pv(bm.r3y)+'</td>':_d)
+          +'<td style="font-size:10px;color:#555;">Benchmark 3Y rolling return</td>'
           +'</tr>';
       });
 
@@ -4652,7 +4728,10 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
     /* portfolio cost (bps) — weighted average from cost section if computed */
     var portCost=null;
     try{
-      if(window.__COST_DATA&&window.__COST_DATA.wtdSum!=null){
+      if(window.__PORT_COST_FULL!=null){
+        /* full-portfolio weighted cost (independent of any Cost-tab distributor filter) */
+        portCost=window.__PORT_COST_FULL;
+      } else if(window.__COST_DATA&&window.__COST_DATA.wtdSum!=null){
         /* use Regular-plan weighted cost stashed by the Portfolio Cost tab */
         portCost=window.__COST_DATA.wtdSum;
       } else {
@@ -4872,17 +4951,39 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
     var AIF_DATA=activeRef.AIF_PERF||{};
     var MFR=window.REFDATA?window.REFDATA.MF_RISK||{}:{};
     var OVR=window.COST_OVERRIDES||{};
-    var totalCMV=model.totalCMV||1;
+    var fullCMV=model.totalCMV||1;
+    var _esc=function(t){ return String(t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); };
 
-    /* Aggregate holdings by instrument name */
-    var schemeMap={};
-    (model.holdings||[]).forEach(function(h){
-      var k=h.name;
-      if(!schemeMap[k]) schemeMap[k]={name:k,cmv:0,cat:h.category||'',asset:h.asset||'',
-        product:h.product||'',perfKey:h.perfKey||null,perfSrc:h.perfSrc||null,
-        directEq:!!h.directEquity,commodity:!!h.commodity};
-      schemeMap[k].cmv+=(+h.cmvCr||0);
-    });
+    /* ---- Distributor filter: show only the products under a selected distributor ---- */
+    var _allHoldings=model.holdings||[];
+    var _distAgg={};
+    _allHoldings.forEach(function(h){ var d=(h.distributor||'').trim(); if(!d) return; _distAgg[d]=(_distAgg[d]||0)+(+h.cmvCr||0); });
+    var distNames=Object.keys(_distAgg).sort(function(a,b){return _distAgg[b]-_distAgg[a];});
+    var selDist=(function(){ try{ return localStorage.getItem('cost_distributor')||''; }catch(e){ return ''; } })();
+    if(selDist && distNames.indexOf(selDist)<0) selDist='';  /* guard: selection absent in this portfolio */
+    var viewHoldings = selDist ? _allHoldings.filter(function(h){return (h.distributor||'').trim()===selDist;}) : _allHoldings;
+    var totalCMV = selDist ? viewHoldings.reduce(function(t,h){return t+(+h.cmvCr||0);},0) : fullCMV;
+    if(!(totalCMV>0)) totalCMV=1;
+
+    /* Aggregate a holdings list by instrument name, then price each scheme's ER + contribution */
+    function buildSchemes(hlds, tcmv){
+      var sm={};
+      (hlds||[]).forEach(function(h){
+        var k=h.name;
+        if(!sm[k]) sm[k]={name:k,cmv:0,cat:h.category||'',asset:h.asset||'',
+          product:h.product||'',perfKey:h.perfKey||null,perfSrc:h.perfSrc||null,
+          directEq:!!h.directEquity,commodity:!!h.commodity};
+        sm[k].cmv+=(+h.cmvCr||0);
+      });
+      var list=Object.keys(sm).map(function(k){
+        var sc=sm[k]; var er=getER(sc); var wt=sc.cmv/tcmv;
+        return {name:sc.name,cmv:sc.cmv,wt:wt,er:er,contrib:er!=null?er*wt:null,
+                perfSrc:sc.perfSrc||'Other',cat:sc.cat,directEq:sc.directEq};
+      }).sort(function(a,b){return b.cmv-a.cmv;});
+      var wsum=0,cov=0;
+      list.forEach(function(sc){ if(sc.contrib!=null){wsum+=sc.contrib;cov+=sc.cmv;} });
+      return {schemes:list, wtdSum:wsum, covCMV:cov};
+    }
 
     function getMFER(perfKey, useDir, rawName, holdingCat){
       /* Expense ratio source = the uploaded "Expense Ratio_Mutual Funds" file (window.MF_ER_TABLE).
@@ -4957,17 +5058,12 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
       return null;
     }
 
-    var schemes=Object.keys(schemeMap).map(function(k){
-      var sc=schemeMap[k];
-      var er=getER(sc);
-      var wt=sc.cmv/totalCMV;
-      return {name:sc.name,cmv:sc.cmv,wt:wt,er:er,contrib:er!=null?er*wt:null,
-              perfSrc:sc.perfSrc||'Other',cat:sc.cat,directEq:sc.directEq};
-    }).sort(function(a,b){return b.cmv-a.cmv;});
-
-    var wtdSum=0, covCMV=0;
-    schemes.forEach(function(sc){ if(sc.contrib!=null){wtdSum+=sc.contrib;covCMV+=sc.cmv;} });
-    try{ window.__COST_DATA={schemes:schemes,wtdSum:wtdSum,totalCMV:totalCMV,isRegular:!isDirect}; }catch(e){}
+    var _view=buildSchemes(viewHoldings, totalCMV);
+    var schemes=_view.schemes, wtdSum=_view.wtdSum, covCMV=_view.covCMV;
+    /* full-portfolio weighted cost (independent of the distributor filter) for IPS + other consumers */
+    var fullWtd = selDist ? buildSchemes(_allHoldings, fullCMV).wtdSum : wtdSum;
+    try{ window.__PORT_COST_FULL=fullWtd; }catch(e){}
+    try{ window.__COST_DATA={schemes:schemes,wtdSum:wtdSum,totalCMV:totalCMV,isRegular:!isDirect,dist:selDist||null,fullWtdSum:fullWtd}; }catch(e){}
 
     /* Group by perfSrc */
     var GROUP_ORDER=['MF','SIF','PMS','AIF','Other'];
@@ -5008,14 +5104,21 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
         '<td>'+(grpContrib*10000).toFixed(2)+' bps</td></tr>';
     });
 
-    tblHtml+='<tr class="grandtot"><td colspan="2">PORTFOLIO WEIGHTED AVG COST</td>'+
+    tblHtml+='<tr class="grandtot"><td colspan="2">'+(selDist?(_esc(selDist)+' — WEIGHTED AVG COST'):'PORTFOLIO WEIGHTED AVG COST')+'</td>'+
       '<td>'+totalCMV.toFixed(2)+'</td><td>100.00%</td><td>'+schemes.reduce(function(t,sc){return t+(sc.er!=null?sc.er*10000:0);},0).toFixed(2)+'</td>'+
       '<td>'+(wtdSum*10000).toFixed(2)+' bps</td></tr></tbody></table>';
 
-    var toggleHtml='<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;">'+
+    var distOpts='<option value="">All Distributors</option>'+distNames.map(function(d){ return '<option value="'+_esc(d)+'"'+(d===selDist?' selected':'')+'>'+_esc(d)+'</option>'; }).join('');
+    var distSelHtml = distNames.length ? (
+      '<span style="font-family:Cambria,serif;font-size:13px;font-weight:bold;margin-left:6px">Distributor:</span>'+
+      '<select id="cost-dist-sel" title="Filter the cost table to a single distributor" style="font-family:Cambria,serif;font-size:12px;border:1px solid #BD9568;border-radius:4px;padding:4px 8px;background:#fff;color:#000;max-width:280px">'+distOpts+'</select>'+
+      (selDist?'<span style="font-family:Cambria,serif;font-size:11px;color:#BD9568;font-weight:bold">Re-based to this distributor</span>':'')
+    ) : '';
+    var toggleHtml='<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap;">'+
       '<span style="font-family:Cambria,serif;font-size:13px;font-weight:bold">Plan:</span>'+
       '<button id="cost-reg-btn" style="padding:5px 14px;border-radius:4px;font-family:Cambria,serif;font-size:12px;cursor:pointer;border:1px solid '+(isDirect?'#ccc':'#BD9568')+';background:'+(isDirect?'#fff':'#BD9568')+';color:'+(isDirect?'#000':'#fff')+'">Regular</button>'+
       '<button id="cost-dir-btn" style="padding:5px 14px;border-radius:4px;font-family:Cambria,serif;font-size:12px;cursor:pointer;border:1px solid '+(isDirect?'#BD9568':'#ccc')+';background:'+(isDirect?'#BD9568':'#fff')+';color:'+(isDirect?'#fff':'#000')+'">Direct</button>'+
+      distSelHtml+
       '<span style="font-family:Cambria,serif;font-size:11px;color:#888">Click any ER cell to override. Double-click to reset.</span>'+
       ''+
       '</div>';
@@ -5032,6 +5135,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
       tblHtml+
       '<p style="font-family:Cambria,serif;font-size:11px;color:#888;margin-top:8px;">'+
         'MF TERs loaded from embedded data (SEBI category estimates). Upload MF Monitor with a TER/Expense Ratio column to replace with actuals. PMS default = 150 bps, AIF default = 200 bps. Edit any ER cell to override.'+
+        (selDist?' <b style="color:#BD9568">Showing only products distributed by '+_esc(selDist)+'; weights, KPIs and the downloadable slide are re-based to this distributor’s CMV.</b>':'')+
       '</p>'+
     '</div>';
 
@@ -5039,6 +5143,8 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
     var dirBtn=document.getElementById('cost-dir-btn');
     if(regBtn) regBtn.onclick=function(){ localStorage.setItem('cost_mode','regular'); renderCost(); if(typeof renderIPS==='function') renderIPS(); };
     if(dirBtn) dirBtn.onclick=function(){ localStorage.setItem('cost_mode','direct'); renderCost(); if(typeof renderIPS==='function') renderIPS(); };
+    var distSel=document.getElementById('cost-dist-sel');
+    if(distSel) distSel.onchange=function(){ try{ if(this.value) localStorage.setItem('cost_distributor',this.value); else localStorage.removeItem('cost_distributor'); }catch(e){} renderCost(); };
 
     document.querySelectorAll('#s-cost .cost-er-inp').forEach(function(inp){
       inp.onchange=function(){
