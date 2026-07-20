@@ -1036,6 +1036,19 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
 
     /* ---- ANALYTICS (CMV-weighted, hybrid split, normalise last) ---- */
     var eq_mcap={}, eq_sector={}, eq_stock={}, eq_stock_mcap={}, eq_exp=0;
+    /* unique underlying companies across Equity MF, Hybrid equity sleeve, Equity PMS and Direct Equity.
+       Keyed by normCo() so the same company entering from two source files (AMC analytics vs PMS/SOA
+       upload) with different spellings collapses to one. Cash/TREPS/repo pseudo-holdings excluded via
+       the same regex the Overlap Matrix uses. */
+    var uniqStocks={}, uqTotal=0, uqSrc={mf:false,hyb:false,pms:false,direct:false};
+    var UQ_CASH=/treps|tri.?party\s*repo|cblo|ccil|net\s*receivable|reverse\s*repo|liquid\s*bees|overnight/i;
+    function addUniq(name,src){
+      var sn=String(name||"").trim(); if(!sn) return;
+      if (UQ_CASH.test(sn)||/^cash\b/i.test(sn)||/\brepo\b/i.test(sn)) return;
+      var k=normCo(sn); if(!k) return;
+      uqTotal++;                       // gross: one per stock line per scheme (same company in 2 schemes = 2)
+      uniqStocks[k]=true; uqSrc[src]=true;
+    }
     var db_sector={}, db_rating={}, db_issuer={}, db_exp=0;
     function addPct(obj,k,v){ obj[k]=(obj[k]||0)+v; }
     rows.forEach(function(h){
@@ -1045,7 +1058,7 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
       if (h.directEquity){
         if (h.stockInfo){ var dmc=h.stockInfo[0]||"Others", dsec=h.stockInfo[1]||"Others";
           addPct(eq_mcap,dmc,Cv); addPct(eq_sector,dsec,Cv);
-          addPct(eq_stock,h.name,Cv); eq_stock_mcap[h.name]=dmc; eq_exp+=Cv;
+          addPct(eq_stock,h.name,Cv); eq_stock_mcap[h.name]=dmc; eq_exp+=Cv; addUniq(h.name,"direct");
         }
         return;
       }
@@ -1054,7 +1067,8 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
         var a=EQ[h.eqKey], smc=0;
         Object.keys(a.mcap).forEach(function(b){ addPct(eq_mcap,b,a.mcap[b]/100*Cv); smc+=a.mcap[b]; });
         Object.keys(a.sector).forEach(function(s){ addPct(eq_sector,s,a.sector[s]/100*Cv); });
-        a.stocks.forEach(function(st){ addPct(eq_stock,st[0],st[1]/100*Cv); eq_stock_mcap[st[0]]=st[2]; });
+        var _uqs = /pms/i.test(h.product||"") ? "pms" : "mf";
+        a.stocks.forEach(function(st){ addPct(eq_stock,st[0],st[1]/100*Cv); eq_stock_mcap[st[0]]=st[2]; addUniq(st[0],_uqs); });
         eq_exp += smc/100*Cv;
       }
       // hybrid: split eq + db by the fund's ACTUAL sleeve weights (no double-count)
@@ -1063,7 +1077,7 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
         if (hy.eq){ var e=hy.eq, w=(e.weight||0)/100;
           Object.keys(e.mcap).forEach(function(b){ addPct(eq_mcap,b,e.mcap[b]/100*w*Cv); });
           Object.keys(e.sector).forEach(function(s){ addPct(eq_sector,s,e.sector[s]/100*w*Cv); });
-          e.stocks.forEach(function(st){ addPct(eq_stock,st[0],st[1]/100*w*Cv); eq_stock_mcap[st[0]]=st[2]; });
+          e.stocks.forEach(function(st){ addPct(eq_stock,st[0],st[1]/100*w*Cv); eq_stock_mcap[st[0]]=st[2]; addUniq(st[0],"hyb"); });
           eq_exp += w*Cv;
         }
         if (hy.db){ var d=hy.db, w2=(d.weight||0)/100;
@@ -1087,9 +1101,29 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
     var eqMcapArr = mcapOrder.filter(function(b){return eq_mcap[b]!=null;}).map(function(b){return {k:b,pct:eq_exp?eq_mcap[b]/eq_exp*100:0};});
     // include any extra mcap labels
     Object.keys(eq_mcap).forEach(function(b){ if(mcapOrder.indexOf(b)<0) eqMcapArr.push({k:b,pct:eq_exp?eq_mcap[b]/eq_exp*100:0}); });
+    var uniqueStockCount = Object.keys(uniqStocks).length;
+    var totalStockCount = uqTotal;
+    var uniqueStockNote = (function(){
+      var parts=[];
+      if(uqSrc.mf) parts.push("Equity MF");
+      if(uqSrc.hyb) parts.push("the equity sleeve of Hybrid MF");
+      if(uqSrc.pms) parts.push("Equity PMS");
+      if(uqSrc.direct) parts.push("Direct Equity");
+      if(!parts.length) return "Total Unique Number of Stocks: no look-through holdings matched for this review.";
+      var list = parts.length===1 ? parts[0] : parts.slice(0,-1).join(", ")+" and "+parts[parts.length-1];
+      var t = "Total Number of Stocks counts every stock position across "+list+
+              " (a company held in two schemes counts twice); Total Unique Number of Stocks counts "+
+              "each distinct company once. Cash/TREPS are excluded from both.";
+      if(!uqSrc.pms) t += " No Equity PMS look-through data is loaded for this review, so PMS holdings are not represented in this count.";
+      return t;
+    })();
     var equityAnalytics = {
       hasData: eq_exp>0,
       exposureCr: eq_exp,
+      uniqueStockCount: uniqueStockCount,
+      totalStockCount: totalStockCount,
+      uniqueStockSrc: uqSrc,
+      uniqueStockNote: uniqueStockNote,
       mcap: eqMcapArr,
       sectors: normArr(eq_sector,eq_exp).slice(0,10),
       stocks: normArr(eq_stock,eq_exp).slice(0,20).map(function(o){return {k:o.k,pct:o.pct,mcap:eq_stock_mcap[o.k]||""};})
@@ -1930,15 +1964,17 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
       var s = base("Portfolio Analytics — Equity");
       var ea=model.equityAnalytics;
       // mcap column chart (top-left)
-      s.addText("Market-Cap Allocation (% of equity)",{x:0.2,y:1.05,w:6.3,h:0.3,fontFace:F,fontSize:11,bold:true,color:C.black});
-      s.addShape(pptx.ShapeType.roundRect,{x:0.12,y:1.3,w:6.46,h:2.46,rectRadius:0.04,fill:{color:"FFFFFF"},line:{color:C.greyL,width:1}}); s.addChart(pptx.ChartType.bar,[{name:"Market Cap",labels:ea.mcap.map(function(m){return m.k;}),values:ea.mcap.map(function(m){return Math.round(m.pct*100)/100;})}],
-        {x:0.2,y:1.35,w:6.3,h:2.35,barDir:"col",chartColors:[C.gold],showValue:true,dataLabelFormatCode:'0.00"%"',dataLabelFontFace:F,dataLabelColor:C.black,dataLabelFontSize:9,
+      kpi(s,0.12,1.00,3.17,String(ea.totalStockCount||0),"Total Number of Stocks");
+      kpi(s,3.41,1.00,3.17,String(ea.uniqueStockCount||0),"Total Unique Number of Stocks");
+      s.addText("Market-Cap Allocation (% of equity)",{x:0.2,y:1.74,w:6.3,h:0.3,fontFace:F,fontSize:11,bold:true,color:C.black});
+      s.addShape(pptx.ShapeType.roundRect,{x:0.12,y:2.02,w:6.46,h:2.10,rectRadius:0.04,fill:{color:"FFFFFF"},line:{color:C.greyL,width:1}}); s.addChart(pptx.ChartType.bar,[{name:"Market Cap",labels:ea.mcap.map(function(m){return m.k;}),values:ea.mcap.map(function(m){return Math.round(m.pct*100)/100;})}],
+        {x:0.2,y:2.07,w:6.3,h:2.00,barDir:"col",chartColors:[C.gold],showValue:true,dataLabelFormatCode:'0.00"%"',dataLabelFontFace:F,dataLabelColor:C.black,dataLabelFontSize:9,
          catAxisLabelFontFace:F,catAxisLabelColor:C.black,catAxisLabelFontSize:9,valAxisHidden:true,valGridLine:{style:'none'},catGridLine:{style:'none'},showLegend:false});
       // sectors horizontal bar (bottom-left)
-      s.addText("Top Sectors (% of equity)",{x:0.2,y:3.85,w:6.3,h:0.3,fontFace:F,fontSize:11,bold:true,color:C.black});
+      s.addText("Top Sectors (% of equity)",{x:0.2,y:4.20,w:6.3,h:0.3,fontFace:F,fontSize:11,bold:true,color:C.black});
       var sec=ea.sectors.slice(0,10).slice().reverse();
-      s.addShape(pptx.ShapeType.roundRect,{x:0.12,y:4.1,w:6.46,h:2.42,rectRadius:0.04,fill:{color:"FFFFFF"},line:{color:C.greyL,width:1}}); s.addChart(pptx.ChartType.bar,[{name:"Sectors",labels:sec.map(function(x){return x.k;}),values:sec.map(function(x){return Math.round(x.pct*100)/100;})}],
-        {x:0.2,y:4.15,w:6.3,h:2.3,barDir:"bar",chartColors:[C.gold],showValue:true,dataLabelFormatCode:'0.00"%"',dataLabelFontFace:F,dataLabelColor:C.black,dataLabelFontSize:8,
+      s.addShape(pptx.ShapeType.roundRect,{x:0.12,y:4.48,w:6.46,h:2.04,rectRadius:0.04,fill:{color:"FFFFFF"},line:{color:C.greyL,width:1}}); s.addChart(pptx.ChartType.bar,[{name:"Sectors",labels:sec.map(function(x){return x.k;}),values:sec.map(function(x){return Math.round(x.pct*100)/100;})}],
+        {x:0.2,y:4.53,w:6.3,h:1.94,barDir:"bar",chartColors:[C.gold],showValue:true,dataLabelFormatCode:'0.00"%"',dataLabelFontFace:F,dataLabelColor:C.black,dataLabelFontSize:8,
          catAxisLabelFontFace:F,catAxisLabelColor:C.black,catAxisLabelFontSize:8,valAxisHidden:true,valGridLine:{style:'none'},catGridLine:{style:'none'},showLegend:false});
       // top holdings table (right)
       var th=[[cell("Top Underlying Holdings",{bold:true,color:"FFFFFF",fill:{color:C.black}}),cell("% Eq",{bold:true,color:"FFFFFF",fill:{color:C.black},align:"right"})]];
@@ -1948,7 +1984,7 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
       });
       s.addTable(th,{x:6.75,y:1.05,w:6.4,colW:[5.3,1.1],rowH:0.255,fontFace:F,fontSize:8.5,valign:"middle",border:{type:"solid",color:"D9D9D9",pt:0.5}});
       if(INS.equity) insight(s, INS.equity, 0.2, 6.55, 12.95, 0.3);
-      foot(s,"*Analytics as on "+model.meta.dataDates.analytics+". Equity sleeve weighted by holding CMV; block sums to 100.00%.");
+      foot(s,"*Analytics as on "+model.meta.dataDates.analytics+". Equity sleeve weighted by holding CMV; block sums to 100.00%. "+ea.uniqueStockNote);
     }
 
     /* ---- 4b. DEBT ANALYTICS ---- */
@@ -2617,7 +2653,12 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
 
     /* 5. Equity Analytics */
     if (model.equityAnalytics.hasData){
-      var ea=model.equityAnalytics, e=[["EQUITY ANALYTICS (% of equity exposure)"],[],["Market Cap","%"]];
+      var ea=model.equityAnalytics, e=[["EQUITY ANALYTICS (% of equity exposure)"],[],
+        ["Metric","Value"],
+        ["Total Number of Stocks", String(ea.totalStockCount||0)],
+        ["Total Unique Number of Stocks", String(ea.uniqueStockCount||0)],
+        [ea.uniqueStockNote],
+        [],["Market Cap","%"]];
       ea.mcap.forEach(function(m){ e.push([m.k,m.pct]); });
       e.push([],["Top 10 Sectors","%"]);
       ea.sectors.forEach(function(s){ e.push([s.k,s.pct]); });
@@ -3574,8 +3615,11 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
     var AM=analyticsSrc(); var ea=AM.equityAnalytics, da=AM.debtAnalytics; var html='';
     if(ea.hasData){
       var stocks=ea.stocks.map(function(st,i){return '<tr><td>'+st.k+'</td><td>'+st.pct.toFixed(2)+'</td></tr>';}).join('');
-      html+='<div class="card"><h3>Portfolio Analytics — Equity</h3><div class="sub">*Analytics as on '+model.meta.dataDates.analytics+'. Equity sleeve weighted by holding CMV; block sums to 100.00%.</div>'+
-        '<div class="flex"><div class="col"><h4 style="margin:4px 0;">Market-Cap Allocation</h4><div class="chartbox"><canvas id="eqMcap"></canvas></div>'+
+      var eqKpi='<div style="display:flex;gap:10px;margin:2px 0 14px;">'+
+        '<div style="flex:1;background:#DBC8B2;border-radius:5px;padding:10px 12px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#000;">'+(ea.totalStockCount||0)+'</div><div style="font-size:11px;color:#3a2810;">Total Number of Stocks</div></div>'+
+        '<div style="flex:1;background:#DBC8B2;border-radius:5px;padding:10px 12px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#000;">'+(ea.uniqueStockCount||0)+'</div><div style="font-size:11px;color:#3a2810;">Total Unique Number of Stocks</div></div></div>';
+      html+='<div class="card"><h3>Portfolio Analytics — Equity</h3><div class="sub">*Analytics as on '+model.meta.dataDates.analytics+'. Equity sleeve weighted by holding CMV; block sums to 100.00%. '+ea.uniqueStockNote+'</div>'+
+        '<div class="flex"><div class="col">'+eqKpi+'<h4 style="margin:4px 0;">Market-Cap Allocation</h4><div class="chartbox"><canvas id="eqMcap"></canvas></div>'+
         '<h4 style="margin:14px 0 4px;">Top Sectors</h4><div class="chartbox tall"><canvas id="eqSec"></canvas></div></div>'+
         '<div class="col"><h4 style="margin:4px 0;">Top Underlying Holdings</h4><table class="cz"><tr><th>Holding</th><th>% Eq</th></tr>'+stocks+'</table></div></div></div>';
     }
