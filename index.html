@@ -2123,7 +2123,7 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
       var s=base('CURRENT VS SAMPLE PORTFOLIO');
       var F='Cambria';
       var _snap=window._cvsSnapshot||null;
-      var cmv=_snap?_snap.cmv:(parseFloat(typeof localStorage!=='undefined'?localStorage.getItem('cvs_cmv')||'':'')||(model.totalCMV?model.totalCMV/1e7:275));
+      var cmv=_snap?_snap.cmv:(model.totalCMV||0);
       var inflPct=_snap?(_snap.infl*100):(parseFloat(typeof localStorage!=='undefined'?localStorage.getItem('cvs_infl')||'6.5':'6.5'));
       var infl=inflPct/100;
       s.addText('Portfolio CMV: Rs '+cmv.toFixed(0)+' Cr  |  Inflation assumption: '+inflPct.toFixed(1)+'%  |  Returns based on dashboard inputs',{x:0.18,y:0.95,w:12.5,h:0.22,fontFace:F,fontSize:8.5,color:'555555'});
@@ -5238,61 +5238,67 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
       ]}
     ];
 
-    /* ---- seed current allocations from model.holdings (maps to new category structure) ---- */
+    /* ---- seed current allocations from model.holdings ----
+       Buckets by the SAME h.asset / h.product fields that drive the Asset Allocation
+       table, so the two tabs always tie out. Product Name wins; category/name regex is
+       only a fallback when the base file's product is not a recognised product type.
+       (Previously the name regex sent e.g. "…Corporate Bond Fund" — a Mutual Fund —
+       into the Bonds row, so Debt read 61/39 while Asset Allocation read 100% MF.) */
     var ttl=model.totalCMV||1;
-    (model.holdings||[]).forEach(function(h){
-      var cat=(h.category||'').toLowerCase();
+    function _cvsBucket(h){
       var prod=(h.product||'').toLowerCase();
-      var nm=(h.name||'').toLowerCase();
+      var cat =(h.category||'').toLowerCase();
+      var nm  =(h.name||'').toLowerCase();
       var asset=(h.asset||'').toLowerCase();
-      var cmv=h.cmvCr||0;
-      if(/debt/i.test(asset)){
-        if(/\bmld\b|market.?linked.?deben/i.test(nm)||/\bmld\b/i.test(cat))
-          CVS_GROUPS[0].rows[6].currAlloc+=cmv;   /* MLD */
-        else if(/\bsif\b/i.test(prod)||(/\bsif\b/i.test(nm)&&/hybrid|long.?short/i.test(nm)))
-          CVS_GROUPS[0].rows[4].currAlloc+=cmv;   /* Hybrid Long Short SIF */
-        else if(/\baif\b/i.test(prod)||/category.?ii|cat.?ii|\baif\b/i.test(cat)){
-          if(/long.?short/i.test(nm)||/long.?short/i.test(cat))
-            CVS_GROUPS[0].rows[3].currAlloc+=cmv; /* Long-Short AIF */
-          else
-            CVS_GROUPS[0].rows[2].currAlloc+=cmv; /* Debt-AIF */
-        } else if(/\bpms\b/i.test(prod))
-          CVS_GROUPS[0].rows[5].currAlloc+=cmv;   /* PMS (debt) */
-        else if(/bond|ncd|debenture|sdi\b|commercial.?paper|fmp|fixed.?mat/i.test(nm)||
-                /bond|ncd/i.test(cat))
-          CVS_GROUPS[0].rows[1].currAlloc+=cmv;   /* Bonds */
-        else
-          CVS_GROUPS[0].rows[0].currAlloc+=cmv;   /* Mutual Funds (default debt MF) */
-      } else if(/equity/i.test(asset)&&!/reit|invit/i.test(asset)){
-        if(/unlisted|pre.?ipo/i.test(cat)||/unlisted|pre.?ipo/i.test(prod)||/unlisted/i.test(nm))
-          CVS_GROUPS[1].rows[4].currAlloc+=cmv;   /* Unlisted AIF/Stocks */
-        else if(/international|global|overseas/i.test(nm)||/global/i.test(cat)||
-                /international|global|overseas/i.test(prod))
-          CVS_GROUPS[1].rows[3].currAlloc+=cmv;   /* Global Equity */
-        else if(h.directEq||/direct.?equity/i.test(prod))
-          CVS_GROUPS[1].rows[2].currAlloc+=cmv;   /* Listed Direct Equity */
-        else if(/\baif\b/i.test(prod)||/category.?iii|cat.?iii|\baif\b/i.test(cat)){
-          if(/long.?short/i.test(nm)||/long.?short/i.test(cat))
-            CVS_GROUPS[1].rows[6].currAlloc+=cmv; /* Long-Short AIF (equity) */
-          else
-            CVS_GROUPS[1].rows[5].currAlloc+=cmv; /* AIF-Listed */
-        } else if(/\bpms\b/i.test(prod))
-          CVS_GROUPS[1].rows[1].currAlloc+=cmv;   /* PMS */
-        else
-          CVS_GROUPS[1].rows[0].currAlloc+=cmv;   /* Mutual Funds (default equity MF) */
-      } else if(/commodity|commodit|gold/i.test(asset)){
-        CVS_GROUPS[2].rows[0].currAlloc+=cmv;     /* Commodity */
-      } else if(/reit|invit/i.test(asset)){
-        CVS_GROUPS[3].rows[0].currAlloc+=cmv;     /* REITs/InvITs */
-      } else if(/hybrid/i.test(asset)){
-        /* split hybrid by actual equity/debt sleeve weight */
-        var eqSlice=(model.equityAnalytics&&model.equityAnalytics.hasData&&model.totalCMV)?
-          (model.equityAnalytics.exposureCr/(model.totalCMV||1)):0.5;
-        CVS_GROUPS[1].rows[0].currAlloc+=cmv*eqSlice;     /* Equity MF sleeve */
-        CVS_GROUPS[0].rows[0].currAlloc+=cmv*(1-eqSlice); /* Debt MF sleeve */
+      var pc=prod+' '+cat;                    /* product first, category as tie-breaker */
+      var isMF   =/mutual.?fund|\bmf\b|\bfof\b|fund.?of.?fund/.test(prod);
+      var isMLD  =/\bmld\b|market.?linked/.test(pc);
+      var isSIF  =/\bsif\b|specialis|specializ/.test(pc);
+      var isAIF  =/\baif\b|alternat/.test(pc);
+      var isPMS  =/\bpms\b|portfolio.?management/.test(pc);
+      var isBond =/bond|ncd|debenture|\bsdi\b|commercial.?paper|treasury|\bg.?sec\b|fixed.?income.?secur|direct.?debt/.test(pc);
+      var isLS   =/long.?short/.test(pc+' '+nm);
+      var isUnl  =/unlisted|pre.?ipo|private.?equity/.test(pc);
+      var isGlob =/global|international|overseas|offshore|feeder/.test(pc);
+      var isDirEq=h.directEq||/direct.?equity|listed.?equity|\bstocks?\b|\bshares?\b|\bequity\b$/.test(prod);
+
+      if(/debt|fixed.?income/.test(asset)){
+        if(isMF)   return [0,0];   /* Debt > Mutual Funds */
+        if(isMLD)  return [0,6];
+        if(isSIF)  return [0,4];
+        if(isAIF)  return [0, isLS?3:2];
+        if(isPMS)  return [0,5];
+        if(isBond) return [0,1];
+        if(/bond|ncd|debenture|\bsdi\b|commercial.?paper|fmp|fixed.?mat/.test(nm)) return [0,1];
+        return [0,0];
       }
+      if(/reit|invit/.test(asset))                     return [3,0];
+      if(/commodit|gold|silver|precious/.test(asset))  return [2,0];
+      if(/hybrid/.test(asset))                         return null;  /* sleeve split below */
+      /* everything else -> Equity */
+      if(isMF)    return [1,0];   /* Equity > Mutual Funds */
+      if(isPMS)   return [1,1];
+      if(isUnl)   return [1,4];
+      if(isGlob)  return [1,3];
+      if(isAIF)   return [1, isLS?6:5];
+      if(isDirEq) return [1,2];
+      if(/unlisted|pre.?ipo/.test(nm)) return [1,4];
+      return [1,0];
+    }
+
+    (model.holdings||[]).forEach(function(h){
+      var cmv=h.cmvCr||0;
+      var b=_cvsBucket(h);
+      if(b){ CVS_GROUPS[b[0]].rows[b[1]].currAlloc+=cmv; return; }
+      /* Hybrid — split by the actual equity sleeve weight */
+      var eqSlice=(model.equityAnalytics&&model.equityAnalytics.hasData&&model.totalCMV)?
+        (model.equityAnalytics.exposureCr/(model.totalCMV||1)):0.5;
+      if(!(eqSlice>=0&&eqSlice<=1)) eqSlice=0.5;
+      CVS_GROUPS[1].rows[0].currAlloc+=cmv*eqSlice;     /* Equity MF sleeve */
+      CVS_GROUPS[0].rows[0].currAlloc+=cmv*(1-eqSlice); /* Debt MF sleeve */
     });
-    /* convert CMV Cr to % of total portfolio */
+
+    /* convert CMV Cr to % of total portfolio (products with no holdings stay 0.00) */
     var _cvsAll=[];
     CVS_GROUPS.forEach(function(g){ g.rows.forEach(function(r){ r.currAlloc=r.currAlloc/ttl*100; _cvsAll.push(r); }); });
     var _cvsSum=0;
@@ -5303,8 +5309,23 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
       _cvsAll.forEach(function(r){ if(r.currAlloc>_big.currAlloc) _big=r; });
       _big.currAlloc=Math.round((_big.currAlloc+_resid)*100)/100;
     }
+    /* actuals snapshot — used to flag manual overrides and to power "Reset to Actual" */
+    var _cvsActuals=CVS_GROUPS.map(function(g){ return g.rows.map(function(r){ return r.currAlloc; }); });
 
-    var storedCMV=parseFloat(typeof localStorage!=='undefined'?localStorage.getItem('cvs_cmv')||'':'')||(model.totalCMV?model.totalCMV:100);
+    /* Portfolio CMV seeds from the live model total — the SAME number that drives the
+       Asset Allocation Grand Total (model.totalCMV, already in Crore; no unit scaling).
+       A manual what-if override is remembered only for the base file it was typed
+       against, so loading a new base file always re-seeds to that file's actual CMV. */
+    var actualCMV=model.totalCMV||0;
+    var cvsSig=((model.meta&&model.meta.familyName)||'')+'|'+((model.meta&&model.meta.asOnDate)||'')+'|'+actualCMV.toFixed(4);
+    var storedCMV=actualCMV;
+    try{
+      if(typeof localStorage!=='undefined' && localStorage.getItem('cvs_cmv_sig')===cvsSig){
+        var _sv=parseFloat(localStorage.getItem('cvs_cmv')||'');
+        if(_sv>0) storedCMV=_sv;
+      }
+    }catch(e){}
+    if(!(storedCMV>0)) storedCMV=actualCMV||100;
     var storedInfl=parseFloat(typeof localStorage!=='undefined'?localStorage.getItem('cvs_infl')||'6.5':'6.5');
     var YEARS=[3,5,10];
 
@@ -5370,8 +5391,12 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
         g.rows.forEach(function(r,ri){
           function fld(field,val){
             var step=(field==='currRet'||field==='propRet')?0.25:0.5;
+            var act=(field==='currAlloc'&&_cvsActuals[gi])?(_cvsActuals[gi][ri]||0):null;
+            var ovr=(act!==null)&&(Math.abs(val-act)>0.005);
             return '<td style="text-align:center;padding:2px 5px">'+
               '<input type="number" class="cvs-num" '+
+              (ovr?('title="Manual override - actual from base file is '+act.toFixed(2)+'%" '+
+                    'style="background:#DBC8B2;border-color:#BD9568;font-weight:bold" '):'')+
               'data-g="'+gi+'" data-r="'+ri+'" data-field="'+field+'" '+
               'value="'+val.toFixed(2)+'" step="'+step+'" min="0" max="100">'+
               '</td>';
@@ -5447,10 +5472,15 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
       var cmvEl=document.getElementById('cvs-cmv-inp'), inflEl=document.getElementById('cvs-infl-inp');
       var cmv=parseFloat(cmvEl?cmvEl.value:storedCMV)||storedCMV;
       var infl=parseFloat(inflEl?inflEl.value:storedInfl)||storedInfl;
-      if(typeof localStorage!=='undefined'){ localStorage.setItem('cvs_cmv',cmv); localStorage.setItem('cvs_infl',infl); }
+      try{ if(typeof localStorage!=='undefined'){ localStorage.setItem('cvs_cmv',cmv); localStorage.setItem('cvs_cmv_sig',cvsSig); localStorage.setItem('cvs_infl',infl); } }catch(e){}
       el.innerHTML=buildCVS(cvsGroups,cmv,infl);
       wireInputs();
-      /* expose live state for PPTX export */
+      snapCVS(cmv,infl);
+    }
+
+    /* expose live state for PPTX export — must also run on FIRST render, otherwise the
+       PPT slide falls back to hardcoded zeros until the user touches an input. */
+    function snapCVS(cmv,infl){
       window._cvsSnapshot={groups:cvsGroups.map(function(g){
         return{label:g.label,rows:g.rows.map(function(r){
           return{l:r.label,ca:r.currAlloc,cr:r.currRet,pa:r.propAlloc,pr:r.propRet};
@@ -5480,19 +5510,33 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
           '<label style="font-weight:bold">Portfolio CMV (₹ Cr):</label>'+
           '<input id="cvs-cmv-inp" type="number" value="'+storedCMV.toFixed(2)+'" min="0" step="1" style="width:110px;font-family:Cambria,serif;font-size:13px;border:1px solid #BD9568;border-radius:3px;padding:4px 8px;">'+
         '</div>'+
+        '<button id="cvs-reset-btn" type="button" style="font-family:Cambria,serif;font-size:12px;background:#BD9568;color:#fff;border:none;border-radius:3px;padding:6px 14px;cursor:pointer;">Reset to Actual</button>'+
         '<div style="display:flex;align-items:center;gap:8px;font-family:Cambria,serif;font-size:13px;">'+
           '<label style="font-weight:bold">Inflation (%):</label>'+
           '<input id="cvs-infl-inp" type="number" value="'+storedInfl.toFixed(1)+'" min="0" step="0.5" max="20" style="width:70px;font-family:Cambria,serif;font-size:13px;border:1px solid #BD9568;border-radius:3px;padding:4px 8px;">'+
         '</div>'+
       '</div>'+
       '<p style="font-family:Cambria,serif;font-size:11px;color:#888;margin:0 0 10px;">'+
-        'Current allocation seeded from base file. Use − / + to adjust values. Allocation totals must equal 100%.'+
+        'Scope: <b style="color:#000">'+((model.meta&&model.meta.familyName)||'Portfolio')+'</b> — all clients / all holdings, as on '+((model.meta&&model.meta.asOnDate)||'—')+'. '+
+        'Actual CMV ₹ '+actualCMV.toFixed(2)+' Cr (ties to Asset Allocation Grand Total).<br>'+
+        'Current Portfolio Alloc % is derived from base-file holdings using the same asset / product mapping as the Asset Allocation tab. '+
+        'Cells you edit are highlighted in tan — use <b>Reset to Actual</b> to restore. Sample Portfolio and all Exp. Return % columns are manually driven.'+
       '</p>'+
       '<div id="cvs-tbl-wrap">'+buildCVS(cvsGroups,storedCMV,storedInfl)+'</div>'+
       '</div>';
 
+    snapCVS(storedCMV,storedInfl);
     document.getElementById('cvs-cmv-inp').onchange=rebuildCVS;
     document.getElementById('cvs-infl-inp').onchange=rebuildCVS;
+    (function(){
+      var rb=document.getElementById('cvs-reset-btn'); if(!rb) return;
+      rb.onclick=function(){
+        cvsGroups.forEach(function(g,gi){ g.rows.forEach(function(r,ri){ r.currAlloc=(_cvsActuals[gi]&&_cvsActuals[gi][ri])||0; }); });
+        var c=document.getElementById('cvs-cmv-inp'); if(c) c.value=actualCMV.toFixed(2);
+        try{ if(typeof localStorage!=='undefined'){ localStorage.removeItem('cvs_cmv'); localStorage.removeItem('cvs_cmv_sig'); } }catch(e){}
+        rebuildCVS();
+      };
+    })();
     wireInputs();
   }
 
