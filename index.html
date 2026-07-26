@@ -2599,6 +2599,113 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
       });
     })();
 
+    /* ---- PORTFOLIO REBALANCING ---- */
+    if(SHOW('rebal')) (function __rebalSlides(){
+      var RB = (typeof window!=='undefined') ? window.__REBAL_DATA : null;
+      if(!RB || !RB.rows || !RB.rows.length) return;
+      var U = model.unit;
+      var BOXC = {
+        'Exit':              {bg:'000000', fg:'FFFFFF'},
+        'Retain':            {bg:'BD9568', fg:'FFFFFF'},
+        'Partial Rebalance': {bg:'DBC8B2', fg:'000000'},
+        'New Addition':      {bg:'D9D9D9', fg:'000000'},
+        'Top-Up':            {bg:'BFBFBF', fg:'000000'}
+      };
+      var CAP = 'Reflects the current base file as on '+(RB.asOn||model.meta.asOnDate)
+              + '. Actionables and proposed allocations are adviser inputs, not system-generated recommendations.';
+      function _n(v){ return v!=null && v!=='' && !isNaN(Number(v)); }
+
+      /* The deck carries the table and nothing else — no action-boxes slide.
+         Eight columns across the same 12.97 in the holdings slides use. */
+      var CW=[1.15,2.85,1.15,0.75,1.35,2.30,1.20,2.22];   /* = 12.97 */
+      var CPC=CW.map(function(w){ return Math.max(8, Math.floor((w-0.10)/0.057)); });
+      var FS=7.5, BUDGET=40;   /* measured against a rendered PDF: ~0.122 in per estimated wrapped line
+                               at 7.5 pt, 5.43 in of table area, less the header and the two total
+                               rows that ride on every slide. Verify by rendering, not by arithmetic. */
+
+      function nl(txt,chars){
+        var t=String(txt==null?'':txt); if(!t) return 1;
+        return t.split('\n').reduce(function(a,seg){ return a+Math.max(1,Math.ceil(seg.length/chars)); },0);
+      }
+      function cellsFor(r){
+        var c0=String(r.client||'—');
+        var c1=String(r.name||'')+(r.sub?('\n'+r.sub):'');
+        var c2=U.m(r.amtCr)+(r.isNew?'':('\nof '+U.m(r.baseCr)));
+        var c3=(r.pctAlloc==null)?'—':Number(r.pctAlloc).toFixed(2)+'%';
+        var c4=String(r.action||'');
+        var props=r.proposed||[];
+        var c5=props.length?props.map(function(p){ return p.fund||'—'; }).join('\n'):'—';
+        var c6=props.length?props.map(function(p){
+                 return U.m(p.amtCr||0)+' / '+(p.pct==null?'—':Number(p.pct).toFixed(2)+'%');
+               }).join('\n'):'—';
+        if(props.length && Math.abs((r.sumPct||0)-100)>0.005) c6+='\nΣ '+Number(r.sumPct||0).toFixed(2)+'%';
+        var c7=String(r.rationale||'')||'—';
+        return [c0,c1,c2,c3,c4,c5,c6,c7];
+      }
+      function linesFor(cs){
+        var m=1; for(var i=0;i<cs.length;i++){ var L=nl(cs[i],CPC[i]); if(L>m) m=L; }
+        return m;
+      }
+      function sumInstr(list){ return list.reduce(function(a,r){ return a+(r.amtCr||0); },0); }
+      function sumProp(list){
+        return list.reduce(function(a,r){
+          return a+((r.proposed||[]).reduce(function(b,p){ return b+(p.amtCr||0); },0)); },0);
+      }
+
+      /* pack rows into pages by estimated wrapped lines — no row is ever dropped */
+      var pageRows=[], cur=[], curL=0;
+      RB.rows.forEach(function(r){
+        var cs=cellsFor(r), L=linesFor(cs);
+        if(cur.length && curL+L>BUDGET){ pageRows.push(cur); cur=[]; curL=0; }
+        cur.push({r:r,cs:cs}); curL+=L;
+      });
+      if(cur.length) pageRows.push(cur);
+
+      var HEAD=['Client','Instruments Name','Amount','% Allocation','Actionables','Proposed Funds','Amount / %','Rationale'];
+      var GI=sumInstr(RB.rows), GP=sumProp(RB.rows);
+      var UN=(RB.summary && RB.summary.unallocated!=null) ? RB.summary.unallocated : (GI-GP);
+
+      function totRow(label, vi, vp, grand, note){
+        /* page total reads as a product-level row (#D9D9D9), grand total as a grand-level
+           row (black / white bold) — the two are never confused at a glance */
+        var fill = grand ? C.black : C.greyL;
+        var fg   = grand ? 'FFFFFF' : C.black;
+        var o={bold:true, fontSize:FS, fill:{color:fill}, color:fg, valign:'middle'};
+        function cc(t,al){ var x={}; for(var k in o) x[k]=o[k]; x.align=al||'center'; return cell(t,x); }
+        return [ cc(label,'left'), cc('Instruments','right'), cc(U.m(vi),'right'),
+                 cc('',''), cc('',''), cc('Proposed','right'), cc(U.m(vp),'right'),
+                 cc(note||'','left') ];
+      }
+
+      pageRows.forEach(function(pg,pi){
+        var s=base('Portfolio Rebalancing'+(pageRows.length>1?' (cont. '+(pi+1)+'/'+pageRows.length+')':''));
+        var trows=[HEAD.map(function(h,ci){
+          return cell(h,{bold:true,color:'FFFFFF',fill:{color:C.black},fontSize:7.5,
+                         align:(ci===0||ci===1||ci===5||ci===7)?'left':'center'});
+        })];
+        pg.forEach(function(o){
+          var cs=o.cs, ac=BOXC[o.r.action]||{bg:'FFFFFF',fg:'000000'};
+          trows.push([
+            cell(cs[0],{fontSize:FS,align:'left',valign:'top'}),
+            cell(cs[1],{fontSize:FS,align:'left',valign:'top'}),
+            cell(cs[2],{fontSize:FS,align:'right',valign:'top'}),
+            cell(cs[3],{fontSize:FS,align:'center',valign:'top'}),
+            cell(cs[4],{fontSize:FS,align:'center',valign:'middle',bold:true,fill:{color:ac.bg},color:ac.fg}),
+            cell(cs[5],{fontSize:FS,align:'left',valign:'top'}),
+            cell(cs[6],{fontSize:FS,align:'right',valign:'top'}),
+            cell(cs[7],{fontSize:FS,align:'left',valign:'top'})
+          ]);
+        });
+        var pgRows=pg.map(function(o){ return o.r; });
+        trows.push(totRow('Page Total ('+(pi+1)+' of '+pageRows.length+')', sumInstr(pgRows), sumProp(pgRows), false, ''));
+        trows.push(totRow('Grand Total', GI, GP, true,
+                          (_n(UN) && Math.abs(UN)>1e-9) ? ('Unallocated '+U.m(UN)) : ''));
+        s.addTable(trows,{x:0.18,y:1.12,w:12.97,colW:CW,fontFace:F,valign:'top',
+          border:{type:'solid',color:'E8E0D5',pt:0.5},autoPage:false});
+        foot(s, CAP);
+      });
+    })();
+
     if(!only||only==='disc') (function(){
       var s=base('Disclaimer');
       var P1='This presentation is for informational purposes only and should not be regarded as an offer to sell or as a solicitation of an offer to buy the securities or other investments mentioned in it. We do not represent that any information including any third-party information is accurate or complete and it should not be relied upon without proper investigation on the part of the investors. Investments in securities/equity related instruments are subject to market risk. These risks could be security specific or market specific and arising from company, industry, political economic factors.';
@@ -2794,6 +2901,61 @@ var TY_LOGO="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAswAAACcCAYAAABrwP3EA
     swRowsXl("OPPORTUNITIES",SWxl.opportunities,"No opportunities flagged from the current data.");
     swRowsXl("THREATS",SWxl.threats,"No notable threats flagged from the current data.");
     aoa("Observations",ob,{cols:[{wch:4},{wch:140}]});
+
+    /* 13. Portfolio Rebalancing — header spelling matches For Rebalancing.xlsx exactly
+           (including "Actioanables") so the sheet round-trips into the team's workbook.
+           Client is column 1. With no auto-seeding there is no honest all-Retain
+           fallback any more: absent a plan the sheet is emitted headers-only. */
+    (function(){
+      var RB=(typeof window!=="undefined")?window.__REBAL_DATA:null;
+      var rws=(RB&&RB.rows&&RB.rows.length)?RB.rows:[];
+      var HD=["Client","Instruments Name","Amount ","% Allocation","Actioanables","Proposed Funds","Amount ","% Allocation","Rationale"];
+      var rb=[HD];
+      var totI=0, totP=0;
+      rws.forEach(function(r){
+        totI += (r.amtCr||0);
+        var props=(r.proposed&&r.proposed.length)?r.proposed:[null];
+        props.forEach(function(p,pi){
+          if(p) totP += (p.amtCr||0);
+          if(pi===0){
+            rb.push([r.client||"", r.name||"", model.unit.v(r.amtCr), (r.pctAlloc==null?null:Number(r.pctAlloc)),
+                     r.action||"", (p?(p.fund||""):""), (p?model.unit.v(p.amtCr||0):null),
+                     (p&&p.pct!=null?Number(p.pct):null), r.rationale||""]);
+          }else{
+            /* continuation line for a second proposed fund — leading cells left blank,
+               matching how the template is filled by hand */
+            rb.push(["", "", null, null, "", (p.fund||""), model.unit.v(p.amtCr||0),
+                     (p.pct!=null?Number(p.pct):null), ""]);
+          }
+        });
+      });
+      if(rws.length){
+        rb.push(["", "Total — Instruments", model.unit.v(totI), null, "", "Total — Proposed",
+                 model.unit.v(totP), null, ""]);
+        if(RB&&RB.summary&&Math.abs(RB.summary.unallocated||0)>1e-9){
+          rb.push(["", "Unallocated ("+model.unit.lab+")", null, null, "", "",
+                   model.unit.v(RB.summary.unallocated), null,
+                   "Amount released (Exit + Partial Rebalance + Top-Up) less the amount proposed against it."]);
+        }
+      }
+      if(RB&&RB.summary){
+        var S=RB.summary;
+        rb.push([]);
+        rb.push(["Total Portfolio CMV ("+model.unit.lab+")", null, model.unit.v(S.totalCMV)]);
+        rb.push(["Amount Being Rebalanced ("+model.unit.lab+")", null, model.unit.v(S.released)]);
+        rb.push(["% of Portfolio Rebalanced", null, (S.releasedPct==null?null:Number(S.releasedPct))]);
+        rb.push(["Amount Proposed for Redeployment ("+model.unit.lab+")", null, model.unit.v(S.proposed)]);
+        rb.push(["Unallocated Balance ("+model.unit.lab+")", null, model.unit.v(S.unallocated)]);
+      }
+      rb.push([]);
+      if(!rws.length){
+        rb.push(["No instruments have been selected into the rebalancing plan. Open the Portfolio Rebalancing tab and add instruments from the action boxes."]);
+      }
+      rb.push(["Amount Being Rebalanced = Exit + Partial Rebalance + Top-Up. Proposed allocations are read as a share of the amount released from their own row."]);
+      rb.push(["Actionables and proposed allocations are adviser inputs, not system-generated recommendations. Portfolio as on "+((RB&&RB.asOn)||model.meta.asOnDate)+"."]);
+      aoa("Portfolio Rebalancing",rb,{cols:[{wch:26},{wch:50},{wch:14},{wch:14},{wch:20},{wch:34},{wch:14},{wch:14},{wch:60}],
+        fmt:{2:FMT_CR,3:'0.00"%"',6:FMT_CR,7:'0.00"%"'}});
+    })();
 
     return wb;
   }
@@ -3407,7 +3569,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
   function deriveDate(fn){ var m=/(\d{1,2})(?:st|nd|rd|th)?\s*([A-Za-z]{3,9})\s*(\d{4})/.exec(fn||''); if(m) return m[1]+' '+m[2].slice(0,3)+' '+m[3]; return new Date().toLocaleDateString('en-GB',{day:'2-digit',month:'short',year:'numeric'}); }
 
   /* ---------- rendering ---------- */
-  var TABS=[['home','Home'],['ips','IPS Profile'],['asset','Asset Allocation'],['distalloc','Distributor Allocation'],['clalloc','Client Allocation'],['amc','AMC Allocation'],['holdings','Holdings'],['analytics','Analytics'],['overlap','Overlap'],['cost','Portfolio Cost'],['cvs','Current vs Sample'],['perf','Performance'],['irr','Fund IRR'],['obs','Observations'],['mfanalysis','MF Analysis'],['disc','Disclaimer'],['thank','Thank You']];
+  var TABS=[['home','Home'],['ips','IPS Profile'],['asset','Asset Allocation'],['distalloc','Distributor Allocation'],['clalloc','Client Allocation'],['amc','AMC Allocation'],['holdings','Holdings'],['analytics','Analytics'],['overlap','Overlap'],['cost','Portfolio Cost'],['cvs','Current vs Sample'],['perf','Performance'],['irr','Fund IRR'],['obs','Observations'],['mfanalysis','MF Analysis'],['rebal','Portfolio Rebalancing'],['disc','Disclaimer'],['thank','Thank You']];
   /* ===== per-tab single-slide PPTX download ===== */
   function dlBar(tabKey){
     return '<div class="dlslide-bar" style="display:flex;justify-content:flex-end;margin:0 0 8px;">'+
@@ -3424,6 +3586,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
     if(key==='distalloc') return !!(mdl.allocByDistributor && mdl.allocByDistributor.cols && mdl.allocByDistributor.cols.length);
     if(key==='clalloc') return !!(mdl.allocByClient && mdl.allocByClient.cols && mdl.allocByClient.cols.length);
     if(key==='irr') return !!(mdl.contribLag && (((mdl.contribLag.contributors||[]).length)||((mdl.contribLag.laggards||[]).length)));
+    if(key==='rebal') return !!(mdl.holdings && mdl.holdings.length);
     return true;
   }
   function slidePPTX(tabKey){
@@ -3507,7 +3670,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
       ['renderAMC',renderAMC],['renderHoldings',renderHoldings],['renderAnalytics',renderAnalytics],
       ['renderOverlap',renderOverlap],['renderCVS',renderCVS],
       ['renderPerf',renderPerf],['renderIRR',renderIRR],['renderObs',renderObs],
-      ['renderMFAnalysis',renderMFAnalysis],
+      ['renderMFAnalysis',renderMFAnalysis],['renderRebal',renderRebal],
       ['renderDisc',renderDisc],['renderThank',renderThank]
     ];
     _renderFns.forEach(function(pair){
@@ -4077,6 +4240,9 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
    ============================================================================ */
   function renderMFAnalysis(){
     var s=document.getElementById('s-mfanalysis');
+    /* Reset BEFORE any early return. renderAll() re-runs on every upload / as-on-date change;
+       an exit-only stash would go stale (previous client's funds) rather than absent. */
+    window.__MFA_DATA = null;
     if(!s) return;
     var REF=window.REFDATA, MFR=REF.MF_RISK||{}, BM=REF.MF_BENCHMARKS||{};
     if(!model){
@@ -4564,6 +4730,1070 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
 
     html_out+='</div></div>';
     s.innerHTML=html_out;
+
+    /* ── expose internals for the Portfolio Rebalancing tab (read cross-IIFE) ───────────
+       Built over model.holdings (not the collapsed equityMFs array) so every base-file
+       instrument name resolves, including rows this tab filters out. ─────────────────── */
+    try{
+      var _mfaBy={}, _mfaMiss={};
+      (model.holdings||[]).forEach(function(hh){
+        if(!hh||!hh.name) return;
+        if(_mfaBy[hh.name]){ _mfaBy[hh.name].cmvCr+=(hh.cmvCr||0); return; }
+        if(_mfaMiss[hh.name]) return;
+        var _r=fuzzyMatch(hh.name);
+        if(!_r){ _mfaMiss[hh.name]=1; return; }
+        var _dc=(hh.category&&hh.category.trim())?hh.category.trim():(_r.cat||'Other');
+        var _rc=resolveRRCat(_dc)||(_r.cat||'Other');
+        _mfaBy[hh.name]={rd:_r,dispCat:_dc,rrCat:_rc,uni:getUni(_rc),cmvCr:(hh.cmvCr||0),wt:null};
+      });
+      Object.keys(_mfaBy).forEach(function(k){
+        _mfaBy[k].wt = model.totalCMV ? (_mfaBy[k].cmvCr/model.totalCMV*100) : null;
+      });
+      window.__MFA_DATA={byName:_mfaBy, uni:uniData, fuzzyMatch:fuzzyMatch, resolveRRCat:resolveRRCat};
+    }catch(e){ window.__MFA_DATA=null; }
+  }
+
+  /* ── supplementary proposed-fund universe (SIF Jun-2026 master, GIFT City master,
+     July-2026 Monthly Outlook contents). None of these appear in MF_ER_TABLE,
+     MF_PERF, MF_PERF_DIRECT, PMS_PERF or AIF_PERF. `source` is provenance for
+     maintenance only and is never surfaced in the UI. Snapshot, not a feed. ── */
+  window.REBAL_FUND_EXTRAS=[
+    {"name": "Altiva Equity Ex-Top 100 Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Altiva Hybrid Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Apex Hybrid Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Arthaya Equity Long Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Arudha Equity Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Arudha Hybrid Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Diviniti Equity Long Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "DynaSIF Active Asset Allocator Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "DynaSIF Equity Ex-Top 100 Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "DynaSIF Equity Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Infinity Hybrid Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "iSIF Active Asset Allocator Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "iSIF Equity Ex-Top 100 Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "iSIF Equity Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "iSIF Hybrid Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Magnum Hybrid Long Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Platinum Hybrid Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Qsif Active Asset Allocator Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Qsif Equity Ex-Top 100 Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Qsif Equity Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Qsif Hybrid Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Qsif Sector Rotation Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "RedHex Hybrid Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Sapphire Equity Long-Short SIF-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Titanium Equity Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Titanium Hybrid Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "WSIF Equity Ex-Top 100 Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "WSIF Equity Long-Short Fund-Reg(G)", "source": "SIF Master List (Jun-2026)"},
+    {"name": "Bandhan G-sec Fund (MF Feeder)", "source": "GIFT City Master List"},
+    {"name": "Bandhan Large & Midcap Fund (MF Feeder)", "source": "GIFT City Master List"},
+    {"name": "Bandhan Small Cap Fund (MF Feeder)", "source": "GIFT City Master List"},
+    {"name": "DSP Long Short Fund", "source": "GIFT City Master List"},
+    {"name": "HDFC Balanced Advantage Fund (MF Feeder)", "source": "GIFT City Master List"},
+    {"name": "HDFC Flexi Cap Fund (MF Feeder)", "source": "GIFT City Master List"},
+    {"name": "HDFC Midcap Fund (MF Feeder)", "source": "GIFT City Master List"},
+    {"name": "HDFC Nifty ETF (ETF Feeder)", "source": "GIFT City Master List"},
+    {"name": "HDFC Small Cap Fund (MF Feeder)", "source": "GIFT City Master List"},
+    {"name": "Mirae Asset India Equity Allocation Fund", "source": "GIFT City Master List"},
+    {"name": "Motilal Oswal Large & Mid (MF Feeder)", "source": "GIFT City Master List"},
+    {"name": "WOC Multi Cap Fund (MF Feeder)", "source": "GIFT City Master List"},
+    {"name": "Sage One Gift City Fund", "source": "GIFT City Master List"},
+    {"name": "UNIFI India Rangoli Gift City Fund", "source": "GIFT City Master List"},
+    {"name": "Alchemy India Long Term Fund", "source": "GIFT City Master List"},
+    {"name": "Karma Capital India Emerging Fund", "source": "GIFT City Master List"},
+    {"name": "Neo Special Credit Opportunity Fund (Debt)", "source": "GIFT City Master List"},
+    {"name": "Neo Secondaries Fund (Private Equity)", "source": "GIFT City Master List"},
+    {"name": "Aditya Birla SL Flexicap Fund (MF Feeder)", "source": "GIFT City Master List"},
+    {"name": "Phillip Greater India Engagement Fund", "source": "GIFT City Master List"},
+    {"name": "SBI Investment Opp Fund", "source": "GIFT City Master List"},
+    {"name": "Carnelian India Amritkaal Fund", "source": "GIFT City Master List"},
+    {"name": "Valuequest Gift City Fund - Listed", "source": "GIFT City Master List"},
+    {"name": "Valuequest Scale Fund II Gift City", "source": "GIFT City Master List"},
+    {"name": "Nuvama Edge Strategy", "source": "GIFT City Master List"},
+    {"name": "Nippon India Long Short Fund", "source": "GIFT City Master List"},
+    {"name": "3P India Gift City Fund", "source": "GIFT City Master List"},
+    {"name": "Ambit Atulya Gift City Fund", "source": "GIFT City Master List"},
+    {"name": "Equirus Long Horizon Gift Fund", "source": "GIFT City Master List"},
+    {"name": "Artha Bharat Absolute Return Fund", "source": "GIFT City Master List"},
+    {"name": "Alpha Alternatives Equity Absolute Return Fund", "source": "GIFT City Master List"},
+    {"name": "Nippon Large Cap Fund (MF Feeder)", "source": "GIFT City Master List"},
+    {"name": "Axis Multicap Fund (MF Feeder)", "source": "GIFT City Master List"},
+    {"name": "Edelwiess Multi Manager AIF Gift City", "source": "GIFT City Master List"},
+    {"name": "Singularity Equity Fund 1 Gift City", "source": "GIFT City Master List"},
+    {"name": "Renaissance India Gift City Fund", "source": "GIFT City Master List"},
+    {"name": "Tata Gift City Fund", "source": "GIFT City Master List"},
+    {"name": "NJ MF Feeder", "source": "GIFT City Master List"},
+    {"name": "DSP Global Equity Fund", "source": "GIFT City Master List"},
+    {"name": "Ionic Global Innovation Fund", "source": "GIFT City Master List"},
+    {"name": "Marcellus Global Compounders", "source": "GIFT City Master List"},
+    {"name": "Mirae Asset Global Asset Allocation Fund", "source": "GIFT City Master List"},
+    {"name": "Parag Parikh Global Investing PMS", "source": "GIFT City Master List"},
+    {"name": "Aditya Birla Global Bluechip Fund", "source": "GIFT City Master List"},
+    {"name": "Axis Global Dynamic Fund", "source": "GIFT City Master List"},
+    {"name": "Phillip International Pioneer Portfolio (PMS)", "source": "GIFT City Master List"},
+    {"name": "Ashoka Whiteoak Emergibg Fund", "source": "GIFT City Master List"},
+    {"name": "AlphaGrep Global Absolute Return Fund", "source": "GIFT City Master List"},
+    {"name": "Artha Global Multiplier Fund", "source": "GIFT City Master List"},
+    {"name": "Alpha Alternatives Global Fixed Income Fund", "source": "GIFT City Master List"},
+    {"name": "Aequitas Gift City Fund", "source": "GIFT City Master List"},
+    {"name": "Parag Parikh Nsasdaq 100 FOF (MF Feeder)", "source": "GIFT City Master List"},
+    {"name": "Parag Parikh S&P 500 (MF Feeder)", "source": "GIFT City Master List"},
+    {"name": "Abans Multi Asset Fund", "source": "GIFT City Master List"},
+    {"name": "Silverdale Bond Fund", "source": "GIFT City Master List"},
+    {"name": "Demeter IntelliFund Externa", "source": "GIFT City Master List"},
+    {"name": "Newport Global Fund", "source": "GIFT City Master List"},
+    {"name": "ICICI Prudential Large cap", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "Renaissance Opportunities", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "Buoyant Capital – Opportunities Strategy", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "UNIFI Blended PMS", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "Stallion Asset Core Fund", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "Abakkus All Cap PMS", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "Karma Capital Wealth Builder", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "Motilal Oswal Founders Portfolio", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "Girik Multi Cap Growth Equity Strategy", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "Negen Capital – Special Situations & Dynamic Allocation Fund", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "Aditya Birla ISOP", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "ICICI Prudential Value Strategy", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "Emkay Golden Decade PMS", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "ICICI Pru PIPE Strategy", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "Abakkus Emerging Opportunities Fund", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "Carnelian Shift Strategy", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "Sageone Core Portfolio PMS", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "Alfaccurate Budding Beasts PMS", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "Burman Capital Management PMS", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "TCG Transformative Growth Portfolio", "source": "PMS - Equity (Monthly Outlook TOC)"},
+    {"name": "Motilal Oswal Founders Fund Series VII", "source": "AIF - Equity (Monthly Outlook TOC)"},
+    {"name": "Carnelian Bharat Amritkaal Fund", "source": "AIF - Equity (Monthly Outlook TOC)"},
+    {"name": "Kotak Iconic Fund II", "source": "AIF - Equity (Monthly Outlook TOC)"},
+    {"name": "Singularity Equity Fund I", "source": "AIF - Equity (Monthly Outlook TOC)"},
+    {"name": "ICICI Prudential Alpha Opportunities", "source": "AIF - Equity (Monthly Outlook TOC)"},
+    {"name": "SageOne Flagship Growth OE Fund", "source": "AIF - Equity (Monthly Outlook TOC)"},
+    {"name": "Alchemy Leaders of Tomorrow Fund", "source": "AIF - Equity (Monthly Outlook TOC)"},
+    {"name": "Alchemy Long Term Ventures Fund 3", "source": "AIF - Equity (Monthly Outlook TOC)"},
+    {"name": "Karma Capital Jasmine Fund", "source": "AIF - Equity (Monthly Outlook TOC)"},
+    {"name": "Emkay Emerging Stars Fund Series 7", "source": "AIF - Equity (Monthly Outlook TOC)"},
+    {"name": "Vedartha India Opportunities Fund – Series I", "source": "AIF - Equity (Monthly Outlook TOC)"},
+    {"name": "InCred Growth Partners Fund II", "source": "PE / VC Fund"},
+    {"name": "360 One Early-Stage Fund Series – I", "source": "PE / VC Fund"},
+    {"name": "Campus Fund III", "source": "PE / VC Fund"},
+    {"name": "Value Quest S.C.A.L.E Fund II", "source": "PE / VC Fund"},
+    {"name": "Neo Yield Enhancer PMS", "source": "Debt - PMS"},
+    {"name": "Phillip Capital Conservative Credit Portfolio", "source": "Debt - PMS"},
+    {"name": "Sundaram FIRST PMS", "source": "Debt - PMS"},
+    {"name": "Northern Arc Money Market Alpha Fund", "source": "Debt - AIF"},
+    {"name": "Vivriti Short Term Debt Fund", "source": "Debt - AIF"},
+    {"name": "Inquant Debt Plus Fund", "source": "Debt - AIF"},
+    {"name": "Mosaic Multiyield Fund", "source": "Debt - AIF"},
+    {"name": "UTI Structured Debt Opportunities Fund IV", "source": "Debt - AIF"},
+    {"name": "Neo Special Credit Opportunities Fund II/IIA", "source": "Debt - AIF"},
+    {"name": "Neo Infra Income Opportunities Fund II", "source": "Debt - AIF"},
+    {"name": "InCred Credit Opportunities Fund III", "source": "Debt - AIF"},
+    {"name": "Altiva Hybrid Long Short SIF", "source": "Hybrid - AIF / SIF"},
+    {"name": "Titanium Long Short SIF", "source": "Hybrid - AIF / SIF"},
+    {"name": "Hybrid AIF- Kotak Optimus (Aggressive 80:20) Fund", "source": "Hybrid - AIF / SIF"},
+    {"name": "Hybrid AIF- Kotak Optimus (Moderate 50:50) Fund", "source": "Hybrid - AIF / SIF"},
+    {"name": "ASK Absolute Return Fund", "source": "Long-Short AIF"},
+    {"name": "Nuvama Enhanced Dynamic Growth Equity", "source": "Long-Short AIF"},
+    {"name": "Mirae Asset Global Allocation Fund – Outbound", "source": "GIFT City (Monthly Outlook TOC)"},
+    {"name": "Ashoka Whiteoak GEM ex India Fund – Outbound", "source": "GIFT City (Monthly Outlook TOC)"},
+    {"name": "DSP Global Equity Fund – Outbound", "source": "GIFT City (Monthly Outlook TOC)"},
+    {"name": "Alchemy India Long Term Fund – Inbound", "source": "GIFT City (Monthly Outlook TOC)"},
+    {"name": "Motilal Oswal Gift City India Equity Fund – Inbound", "source": "GIFT City (Monthly Outlook TOC)"},
+    {"name": "Varanium Newport Global Fund", "source": "Offshore"}
+  ];
+
+  /* ==================================================================================
+     PORTFOLIO REBALANCING TAB  (v2 — 2026-07-26)
+     Five action boxes over an 8-column editable worksheet reproducing For Rebalancing.xlsx.
+     The plan starts EMPTY: the RM picks instruments into a box, nothing is pre-assigned.
+     One unique fund = one row (keyed on the normalised instrument name), with a Client
+     dropdown where more than one client holds it.
+     Rationale auto-drafted from: (1) % allocation of total portfolio, (2) MF Analysis
+     risk-reward ratios, (3) Performance sheet vs benchmark, (4) client-level Fund XIRR.
+     Nothing is fabricated — a source with no data simply contributes no clause.
+     ================================================================================== */
+  var REBAL_ACTIONS=['Exit','Retain','Partial Rebalance','New Addition','Top-Up'];
+  var REBAL_BOXCOL={
+    'Exit':              {bg:'#000000', fg:'#FFFFFF'},
+    'Retain':            {bg:'#BD9568', fg:'#FFFFFF'},
+    'Partial Rebalance': {bg:'#DBC8B2', fg:'#000000'},
+    'New Addition':      {bg:'#D9D9D9', fg:'#000000'},
+    'Top-Up':            {bg:'#BFBFBF', fg:'#000000'}
+  };
+  var REBAL_STATE={};      /* fundKey -> {action,client,pctAlloc,proposed:[{fund,pct}],rationale,rationaleEdited,newAmtCr,newName} */
+  var REBAL_FILTER=null;   /* click-the-box-header table filter; null = show all */
+  var REBAL_OPEN=null;     /* which box's "+ Add fund" picker is expanded; null = all collapsed. NOT the same thing as REBAL_FILTER. */
+  var REBAL_PICKQ='';      /* type-to-filter text inside the open picker */
+  var REBAL_NEW=[];        /* manually added New Addition rows: {key} */
+  var REBAL_NEWSEQ=0;
+  var REBAL_TAG=null;      /* model fingerprint; a change wipes RM state so one client's plan never leaks into another */
+  var REBAL_ROWS=[];       /* render-scoped row cache; DOM refers to rows by index */
+  var REBAL_FUNDS=null;    /* unique-fund index, rebuilt once per render */
+  var _rbEditing=false;    /* re-entrancy guard for the interlinked amount/% pairs */
+  var _rbDocWired=false;
+
+  var REBAL_CSS=''
+    +'#s-rebal .rb-wrap{font-family:Cambria,serif;color:#000;}'
+    +'#s-rebal .rb-boxes{display:flex;flex-wrap:wrap;gap:10px;margin:0 0 16px;align-items:flex-start;}'
+    +'#s-rebal .rb-box{flex:1 1 130px;min-width:126px;border:1px solid #D9D9D9;border-radius:6px;background:#FFFFFF;overflow:visible;transition:box-shadow .15s;position:relative;}'
+    +'#s-rebal .rb-box:hover{box-shadow:0 2px 8px rgba(0,0,0,.12);}'
+    +'#s-rebal .rb-box.on{outline:2px solid #BD9568;outline-offset:-1px;}'
+    +'#s-rebal .rb-bh{font-size:13px;font-weight:bold;letter-spacing:.04em;padding:8px 12px;text-transform:uppercase;cursor:pointer;border-radius:5px 5px 0 0;}'
+    +'#s-rebal .rb-bm{padding:8px 12px 6px;border-bottom:1px solid #D9D9D9;cursor:pointer;}'
+    +'#s-rebal .rb-bnum{font-size:18px;font-weight:bold;color:#BD9568;}'
+    +'#s-rebal .rb-bsub{font-size:11px;color:#666;}'
+    +'#s-rebal .rb-bamt{font-size:13px;font-weight:bold;color:#000;margin-top:2px;}'
+    +'#s-rebal .rb-bpct{font-size:11px;color:#666;}'
+    +'#s-rebal .rb-bl{padding:7px 12px 5px;max-height:150px;overflow-y:auto;}'
+    +'#s-rebal .rb-bl div{font-size:11.5px;line-height:1.45;padding:1px 0;border-bottom:1px dotted #EEE;}'
+    +'#s-rebal .rb-bl div:last-child{border-bottom:none;}'
+    +'#s-rebal .rb-bempty{font-size:11.5px;color:#777;font-style:italic;}'
+    +'#s-rebal .rb-bf{padding:4px 10px 8px;border-top:1px solid #F2F2F2;}'
+    +'#s-rebal .rb-addbtn{font-family:Cambria,serif;font-size:11.5px;width:100%;padding:4px 6px;border:1px dashed #BD9568;border-radius:4px;background:#FFFFFF;color:#BD9568;font-weight:bold;cursor:pointer;}'
+    +'#s-rebal .rb-addbtn:hover{background:#FCFAF7;}'
+    +'#s-rebal .rb-addbtn.on{background:#BD9568;color:#FFFFFF;border-style:solid;}'
+    +'#s-rebal .rb-pick{position:absolute;left:0;top:100%;z-index:40;background:#FFFFFF;border:1px solid #BD9568;border-radius:0 0 6px 6px;box-shadow:0 6px 18px rgba(0,0,0,.18);width:300px;max-width:96vw;margin-top:2px;}'
+    +'#s-rebal .rb-boxes .rb-box:nth-child(n+4) .rb-pick{left:auto;right:0;}'
+    +'#s-rebal .rb-pick .rb-pqw{padding:6px 8px;border-bottom:1px solid #EEE;}'
+    +'#s-rebal .rb-pq{font-family:Cambria,serif;font-size:11.5px;width:100%;box-sizing:border-box;border:1px solid #D9D9D9;border-radius:3px;padding:3px 5px;background:#fff;color:#000;}'
+    +'#s-rebal .rb-pq:focus{outline:none;border-color:#BD9568;}'
+    +'#s-rebal .rb-pl{max-height:280px;overflow-y:auto;padding:2px 0 4px;}'
+    +'#s-rebal .rb-pg{font-size:10px;font-weight:bold;letter-spacing:.05em;text-transform:uppercase;color:#666;background:#F4F4F4;padding:3px 9px;border-top:1px solid #EEE;border-bottom:1px solid #EEE;}'
+    +'#s-rebal .rb-po{display:flex;gap:6px;align-items:flex-start;font-size:11.5px;line-height:1.35;padding:4px 9px;cursor:pointer;}'
+    +'#s-rebal .rb-po:hover{background:#FCFAF7;}'
+    +'#s-rebal .rb-po .rb-ponm{flex:1 1 auto;min-width:0;}'
+    +'#s-rebal .rb-pobd{flex:0 0 auto;font-size:9.5px;padding:1px 5px;border-radius:8px;background:#D9D9D9;color:#000;white-space:nowrap;}'
+    +'#s-rebal .rb-potick{flex:0 0 auto;color:#BD9568;font-weight:bold;}'
+    +'#s-rebal .rb-pnone{font-size:11.5px;color:#777;font-style:italic;padding:6px 9px;}'
+    +'#s-rebal .rb-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 10px;}'
+    +'#s-rebal .rb-chip{font-size:12px;background:#DBC8B2;color:#000;border:1px solid #BD9568;border-radius:14px;padding:3px 12px;cursor:pointer;}'
+    +'#s-rebal .rb-btn{font-family:Cambria,serif;font-size:12px;padding:5px 12px;border:1px solid #BD9568;border-radius:4px;cursor:pointer;background:#FFFFFF;color:#BD9568;font-weight:bold;}'
+    +'#s-rebal .rb-btn.pri{background:#BD9568;color:#FFFFFF;}'
+    +'#s-rebal .rb-empty{border:1px solid #D9D9D9;border-radius:6px;background:#FCFAF7;padding:22px 18px;text-align:center;font-size:12.5px;color:#666;line-height:1.6;}'
+    +'#s-rebal table.rb-tbl{font-size:12px;table-layout:fixed;}'
+    +'#s-rebal table.rb-tbl th{font-size:11.5px;vertical-align:middle;}'
+    +'#s-rebal table.rb-tbl td{vertical-align:top;}'
+    +'#s-rebal table.rb-tbl tbody tr:nth-child(even) td{background:#FAFAFA;}'
+    +'#s-rebal table.rb-tbl tbody tr.lvl-grand td{background:#000000;color:#FFFFFF;font-weight:bold;vertical-align:middle;}'
+    +'#s-rebal table.rb-tbl th.rb-l,#s-rebal table.rb-tbl td.rb-l{text-align:left;}'
+    +'#s-rebal .rb-nm{font-size:12.5px;line-height:1.35;}'
+    +'#s-rebal .rb-sub{font-size:10.5px;color:#777;line-height:1.35;margin-top:2px;}'
+    +'#s-rebal .rb-of{font-size:10.5px;color:#777;margin-top:2px;}'
+    +'#s-rebal #s-rebal input,#s-rebal select,#s-rebal textarea{font-family:Cambria,serif;}'
+    +'#s-rebal .rb-in{font-family:Cambria,serif;font-size:12px;border:1px solid #D9D9D9;border-radius:3px;padding:3px 4px;width:100%;min-width:0;box-sizing:border-box;background:#fff;color:#000;text-align:right;}'
+    +'#s-rebal table.rb-tbl td input[type=number]{-moz-appearance:textfield;}'
+    +'#s-rebal table.rb-tbl td input[type=number]::-webkit-outer-spin-button,#s-rebal table.rb-tbl td input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}'
+    +'#s-rebal .rb-in:focus{outline:none;border-color:#BD9568;}'
+    +'#s-rebal .rb-in.txt{text-align:left;}'
+    +'#s-rebal .rb-in.sm{font-size:11px;padding:2px 4px;}'
+    +'#s-rebal .rb-sel{font-family:Cambria,serif;font-size:12px;border:1px solid #D9D9D9;border-radius:3px;padding:3px 4px;width:100%;box-sizing:border-box;background:#fff;color:#000;}'
+    +'#s-rebal .rb-sel:focus{outline:none;border-color:#BD9568;}'
+    +'#s-rebal .rb-rat{font-family:Cambria,serif;font-size:11.5px;line-height:1.45;border:1px solid #D9D9D9;border-radius:3px;padding:4px 6px;width:100%;box-sizing:border-box;resize:vertical;min-height:56px;max-height:210px;overflow:auto;background:#fff;color:#000;text-align:left;}'
+    +'#s-rebal .rb-rat:focus{outline:none;border-color:#BD9568;}'
+    +'#s-rebal .rb-pfblk{min-height:56px;margin-bottom:4px;}'
+    +'#s-rebal .rb-pfrow{display:flex;gap:4px;align-items:center;}'
+    +'#s-rebal .rb-pflab{font-size:9.5px;color:#888;line-height:1.2;margin:1px 0 0;}'
+    +'#s-rebal .rb-mini{font-family:Cambria,serif;font-size:11px;border:1px solid #D9D9D9;border-radius:3px;background:#fff;color:#BD9568;cursor:pointer;padding:2px 6px;font-weight:bold;line-height:1.2;}'
+    +'#s-rebal .rb-amt{font-size:10.5px;color:#666;white-space:nowrap;}'
+    +'#s-rebal .rb-cust{display:inline-block;font-size:9.5px;color:#888;border:1px solid #D9D9D9;border-radius:8px;padding:0 5px;margin-top:1px;}'
+    +'#s-rebal .rb-warn{display:inline-block;font-size:10.5px;font-weight:bold;color:#931621;border:1px solid #931621;border-radius:3px;padding:1px 5px;margin-top:2px;}'
+    +'#s-rebal .rb-tlab{font-size:11.5px;font-weight:bold;color:#FFFFFF;}'
+    +'#s-rebal table.rb-tbl tbody tr.rb-unrow td{background:#FFFFFF;color:#931621;font-size:11px;font-weight:bold;}'
+    +'#s-rebal .rb-sum{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;}'
+    +'#s-rebal .rb-si{flex:1 1 170px;border:1px solid #D9D9D9;border-radius:6px;padding:9px 12px;background:#FCFAF7;}'
+    +'#s-rebal .rb-sl{font-size:10.5px;color:#777;text-transform:uppercase;letter-spacing:.03em;}'
+    +'#s-rebal .rb-sv{font-size:15px;font-weight:bold;color:#000;margin-top:3px;}'
+    +'#s-rebal .rb-sv.neg{color:#931621;}'
+    +'#s-rebal .rb-note{font-size:11px;color:#888;margin-top:10px;line-height:1.5;}'
+    +'#rb-ac{position:absolute;z-index:9999;display:none;background:#FFFFFF;border:1px solid #BD9568;border-radius:4px;box-shadow:0 6px 18px rgba(0,0,0,.18);font-family:Cambria,serif;max-height:260px;overflow-y:auto;}'
+    +'#rb-ac .rb-aci{font-size:11.5px;line-height:1.35;padding:4px 8px;cursor:pointer;color:#000;}'
+    +'#rb-ac .rb-aci:hover,#rb-ac .rb-aci.sel{background:#FCFAF7;}'
+    +'#rb-ac .rb-acn{font-size:10.5px;color:#777;font-style:italic;padding:5px 8px;border-top:1px solid #EEE;background:#FAFAFA;}';
+
+  function rebalCSS(){
+    if(document.getElementById('rebal-css')) return;
+    var st=document.createElement('style'); st.id='rebal-css'; st.textContent=REBAL_CSS;
+    (document.head||document.documentElement).appendChild(st);
+  }
+
+  function rbEsc(x){ return String(x==null?'':x).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function rbN(v){ return v!=null && v!=='' && !isNaN(Number(v)); }
+  function rbF(v,d){ d=(d==null?2:d); return rbN(v)?Number(v).toFixed(d):'—'; }
+  function rbJoin(a){
+    if(!a||!a.length) return '';
+    if(a.length===1) return a[0];
+    if(a.length===2) return a[0]+' and '+a[1];
+    return a.slice(0,-1).join(', ')+', and '+a[a.length-1];
+  }
+  /* same normalisation renderMFAnalysis uses (normStr), so the key is stable AND
+     HTML-attribute-safe — unlike the v1 composite, which carried \x00 separators. */
+  function rbNorm(n){ return String(n==null?'':n).toLowerCase().replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim(); }
+  function rbKey(h){ return rbNorm(h && h.name); }
+  function rbShallow(o){ var r={}; if(o) for(var k in o){ if(Object.prototype.hasOwnProperty.call(o,k)) r[k]=o[k]; } return r; }
+  function rbTag(){
+    if(!model) return null;
+    return [ (model.meta&&model.meta.familyName)||'', (model.meta&&model.meta.asOnDate)||'',
+             (model.holdings||[]).length, (model.totalCMV==null?'':Number(model.totalCMV).toFixed(6)) ].join('|');
+  }
+
+  /* ── unique-fund index: one entry per instrument name, carrying its holding clients ──
+     fundKey -> {key,name,asset,product,category,clients:[{client,cmvCr}],totalCmvCr,h}
+     Group order preserves the base file's own asset / product first-appearance order. */
+  function rbFundIndex(){
+    var byKey={}, list=[], groups=[], gseen={};
+    (model.holdings||[]).forEach(function(h){
+      var k=rbKey(h); if(!k) return;
+      var asset=h.asset||'Other', prod=h.product||'Other', gk=asset+' '+prod;
+      if(!gseen[gk]){ gseen[gk]={asset:asset,product:prod,funds:[]}; groups.push(gseen[gk]); }
+      var e=byKey[k];
+      if(!e){
+        e=byKey[k]={key:k,name:h.name,asset:asset,product:prod,category:h.category||'',
+                    clients:[],byClient:{},totalCmvCr:0,h:h};
+        byKey[k]=e; list.push(e); gseen[gk].funds.push(e);
+      }
+      e.totalCmvCr += (h.cmvCr||0);
+      var c=h.client||'';
+      if(!e.byClient[c]){ e.byClient[c]={client:c,cmvCr:0}; e.clients.push(e.byClient[c]); }
+      e.byClient[c].cmvCr += (h.cmvCr||0);
+    });
+    groups.forEach(function(g){
+      g.funds.sort(function(a,b){ var x=a.name.toLowerCase(), y=b.name.toLowerCase(); return x<y?-1:(x>y?1:0); });
+    });
+    /* row order = group order, so the table reads down Equity/Mutual Funds, Equity/PMS, Debt/… */
+    var ordered=[]; groups.forEach(function(g){ g.funds.forEach(function(e){ ordered.push(e); }); });
+    return {byKey:byKey, list:ordered, groups:groups};
+  }
+
+  /* ── the fund's CMV for the currently selected client (null = all clients combined) ── */
+  function rbBaseCr(e, sel){
+    if(!e) return 0;
+    if(sel==null || !e.byClient[sel]) return (e.totalCmvCr||0);
+    return (e.byClient[sel].cmvCr||0);
+  }
+
+  /* ── performance index: perfKey -> {row, bench, cols, bucket} ────────────────────
+     Bench = the nearest FOLLOWING type:'bench' row inside the same type:'sub' group.
+     SIF buckets carry no bench row, so bench stays null there. Buckets are read fresh
+     because renderPerf reassigns model.performance.buckets on the Regular/Direct toggle. */
+  function rbPerfIndex(){
+    var idx={};
+    try{
+      if(!model||!model.performance||typeof window.filterPerfBuckets!=='function') return idx;
+      var bks=window.filterPerfBuckets(model.performance.buckets)||[];
+      bks.forEach(function(bk){
+        var pend=[];
+        function flush(bench){
+          pend.forEach(function(fr){ if(fr.key && !idx[fr.key]) idx[fr.key]={row:fr,bench:bench||null,cols:bk.cols||[],bucket:bk.key}; });
+          pend=[];
+        }
+        (bk.rows||[]).forEach(function(r){
+          if(r.type==='sub'){ flush(null); return; }
+          if(r.type==='fund'){ if(!r.unmatched) pend.push(r); return; }
+          if(r.type==='bench'){ flush(r); return; }
+        });
+        flush(null);
+      });
+    }catch(e){}
+    return idx;
+  }
+
+  /* ── client-level XIRR index: instrument name -> [{client,xirr,bmxirr}] (already x100) ── */
+  function rbXirrIndex(){
+    var idx={};
+    try{
+      (model.clients||[]).forEach(function(c){
+        (c.rows||[]).forEach(function(r){
+          if(r.level!=='item') return;
+          (idx[r.label]||(idx[r.label]=[])).push({client:c.name,xirr:r.xirr,bmxirr:r.bmxirr});
+        });
+      });
+    }catch(e){}
+    return idx;
+  }
+
+  /* ── auto-draft the rationale from whichever of the four sources actually resolve ── */
+  function rbDraft(h, perfIdx, xirrIdx){
+    if(!h || !h.name) return '';
+    var cl=[];
+
+    /* 1 — % allocation of the fund in the total portfolio */
+    var pctPf = (model.totalCMV ? (h.cmvCr/model.totalCMV*100) : null);
+    if(rbN(pctPf) && isFinite(pctPf)){
+      cl.push('holds '+pctPf.toFixed(2)+'% of the total portfolio'
+        + (pctPf>10 ? ', above the 10% single-instrument comfort level' : ''));
+    }
+
+    /* 2 — MF Analysis (Risk-Reward Ratio). alpha is ALREADY in percentage points — no x100. */
+    try{
+      var M=window.__MFA_DATA;
+      var e=(M && M.byName) ? M.byName[h.name] : null;
+      if(e){
+        var rd=e.rd||{}, uni=e.uni||{}, parts=[], score=0;
+        if(rbN(rd.sharpe)&&rbN(uni.sharpe)){ parts.push('Sharpe '+rbF(rd.sharpe)+' vs '+(e.rrCat||'category')+' universe average '+rbF(uni.sharpe)); score+=(Number(rd.sharpe)>Number(uni.sharpe)?1:-1); }
+        if(rbN(rd.sortino)&&rbN(uni.sortino)){ parts.push('Sortino '+rbF(rd.sortino)+' vs '+rbF(uni.sortino)); score+=(Number(rd.sortino)>Number(uni.sortino)?1:-1); }
+        if(rbN(rd.alpha)&&rbN(uni.alpha)){ parts.push('alpha '+rbF(rd.alpha)+'% vs '+rbF(uni.alpha)+'%'); score+=(Number(rd.alpha)>Number(uni.alpha)?1:-1); }
+        if(parts.length){
+          var verd = score>0 ? 'placing it above category on risk-adjusted return'
+                   : (score<0 ? 'placing it below category on risk-adjusted return'
+                              : 'placing it broadly in line with category on risk-adjusted return');
+          cl.push(rbJoin(parts)+', '+verd);
+        }
+      }
+    }catch(e2){}
+
+    /* 3 — Performance sheet vs benchmark. Returns are already in percentage points. */
+    try{
+      var pe = h.perfKey ? perfIdx[h.perfKey] : null;
+      if(pe && pe.row && pe.row.r){
+        var cols=pe.cols||[], use=[];
+        ['1Y','3Y','5Y'].forEach(function(c){ if(cols.indexOf(c)>=0 && rbN(pe.row.r[c])) use.push(c); });
+        if(!use.length) cols.forEach(function(c){ if(use.length<3 && rbN(pe.row.r[c])) use.push(c); });
+        if(use.length){
+          var txt = rbJoin(use.map(function(c){ return c+' '+rbF(pe.row.r[c])+'%'; }));
+          if(pe.bench && pe.bench.r){
+            var bc = use.filter(function(c){ return rbN(pe.bench.r[c]); });
+            if(bc.length) txt += ' against '+(pe.bench.label||'the benchmark')+' at '
+              + rbJoin(bc.map(function(c){ return rbF(pe.bench.r[c])+'%'; }))
+              + (bc.length>1?' respectively':'');
+          }
+          cl.push(txt);
+        }
+      }
+    }catch(e3){}
+
+    /* 4 — Fund XIRR from the holding sheet, at client level */
+    try{
+      var xs=xirrIdx[h.name]||[], mine=null;
+      xs.forEach(function(x){ if(x.client===h.client) mine=x; });
+      var u=mine||xs[0]||null;
+      if(!u && h.xirrFrac!=null) u={client:h.client,xirr:h.xirrFrac*100,bmxirr:(h.bmxirrFrac!=null?h.bmxirrFrac*100:null)};
+      if(u && rbN(u.xirr)){
+        var t=(xs.length>1 && u.client ? (u.client+"'s ") : '')+'client-level XIRR of '+rbF(u.xirr)+'%';
+        if(rbN(u.bmxirr)) t+=' against benchmark XIRR of '+rbF(u.bmxirr)+'%';
+        if(xs.length>1){
+          var wid=null, wg=-1;
+          xs.forEach(function(x){ if(rbN(x.xirr)&&rbN(x.bmxirr)){ var g=Math.abs(Number(x.xirr)-Number(x.bmxirr)); if(g>wg){ wg=g; wid=x; } } });
+          if(wid && wid.client!==u.client) t+=' (widest gap across the family at '+wid.client+', '+rbF(wid.xirr)+'% vs '+rbF(wid.bmxirr)+'%)';
+        }
+        cl.push(t);
+      }
+    }catch(e4){}
+
+    if(!cl.length) return '';
+    var out=cl.join('; ');
+    return out.charAt(0).toUpperCase()+out.slice(1)+'.';
+  }
+
+  /* Draft against the fund's TOTAL CMV across clients, so the share-of-portfolio clause
+     does not move when the RM changes the Client dropdown. */
+  function rbDraftFor(e){
+    if(!e || !e.h) return '';
+    var hh=rbShallow(e.h); hh.cmvCr=e.totalCmvCr;
+    return rbDraft(hh, rbPerfIndex(), rbXirrIndex());
+  }
+
+  /* ── build the render-scoped row cache — ONLY what the RM has picked (no seeding) ── */
+  function rbBuildRows(){
+    var rows=[];
+    (REBAL_FUNDS ? REBAL_FUNDS.list : []).forEach(function(e){
+      var st=REBAL_STATE[e.key]; if(!st) return;
+      if(st.client!=null && !e.byClient[st.client]) st.client=null;   /* client absent in this model */
+      rows.push({key:e.key,fi:e,h:e.h,isNew:false,st:st,
+        name:e.name,
+        sub:[e.asset,e.product,e.category].filter(Boolean).join(' · '),
+        baseCr:rbBaseCr(e, st.client)});
+    });
+    REBAL_NEW.forEach(function(nr){
+      var k=nr.key;
+      if(!REBAL_STATE[k]) REBAL_STATE[k]={action:'New Addition',client:null,pctAlloc:100,proposed:[],rationale:'',rationaleEdited:false,newAmtCr:0,newName:''};
+      var st=REBAL_STATE[k];
+      rows.push({key:k,fi:null,h:null,isNew:true,st:st,name:st.newName||'',sub:'Manually added',baseCr:(st.newAmtCr||0)});
+    });
+    rows.forEach(function(r){
+      var st=r.st;
+      r.amtCr = r.isNew ? (Number(st.newAmtCr)||0) : (r.baseCr * ((Number(st.pctAlloc)||0)/100));
+      r.sumPct = (st.proposed||[]).reduce(function(a,p){ return a+(Number(p.pct)||0); },0);
+      r.propAmts = (st.proposed||[]).map(function(p){ return r.amtCr*((Number(p.pct)||0)/100); });
+    });
+    return rows;
+  }
+
+  function rbSummary(rows){
+    var released=0, proposed=0, totInstr=0, totProp=0;
+    rows.forEach(function(r){
+      var a=r.st.action;
+      var pa=r.propAmts.reduce(function(a2,b){ return a2+b; },0);
+      totInstr += r.amtCr;
+      totProp  += pa;
+      if(a==='Exit'||a==='Partial Rebalance'||a==='Top-Up'){ released += r.amtCr; proposed += pa; }
+    });
+    var tot=model.totalCMV||0;
+    return {totalCMV:tot, released:released, releasedPct:(tot?released/tot*100:null),
+            proposed:proposed, unallocated:released-proposed,
+            totInstr:totInstr, totProp:totProp};
+  }
+
+  function rbBoxAgg(rows){
+    var out={};
+    REBAL_ACTIONS.forEach(function(a){ out[a]={action:a,count:0,amtCr:0,names:[]}; });
+    rows.forEach(function(r){
+      var b=out[r.st.action]; if(!b) return;
+      b.count++; b.amtCr+=r.amtCr;
+      if(r.st.action==='New Addition'){
+        var pf=(r.st.proposed||[]).map(function(p){ return p.fund; }).filter(function(x){ return x && String(x).trim(); });
+        if(pf.length) pf.forEach(function(x){ b.names.push(String(x)); });
+        else b.names.push(r.name || '(unnamed new instrument)');
+      } else {
+        b.names.push(r.name);
+      }
+    });
+    var tot=model.totalCMV||0;
+    REBAL_ACTIONS.forEach(function(a){ out[a].pct = tot? out[a].amtCr/tot*100 : null; });
+    return out;
+  }
+
+  /* ── N5: ONE operation moves a fund to an action, whether the RM used a box picker
+         or the Actionables dropdown. Picking the box a fund is already in removes it. ── */
+  function rbSetAction(key, action){
+    if(action==='__remove'){ rbRemoveRow(key); return; }
+    var FI=REBAL_FUNDS, e=(FI&&FI.byKey)?FI.byKey[key]:null, st=REBAL_STATE[key];
+    if(st && st.action===action && e){ rbRemoveRow(key); return; }   /* deselect from the picker */
+    if(st){ st.action=action; }
+    else if(e){
+      REBAL_STATE[key]={action:action, client:null, pctAlloc:100, proposed:[],
+                        rationale:rbDraftFor(e), rationaleEdited:false};
+    } else { return; }
+    if(REBAL_FILTER && REBAL_FILTER!==action) REBAL_FILTER=null;
+    REBAL_OPEN=null; REBAL_PICKQ='';
+    renderRebal();
+  }
+
+  function rbRemoveRow(key){
+    delete REBAL_STATE[key];
+    REBAL_NEW=REBAL_NEW.filter(function(x){ return x.key!==key; });
+    renderRebal();
+  }
+
+  /* ── proposed-fund autocomplete universe (built lazily on first focus) ──────────── */
+  function rbUniverse(){
+    if(window.__REBAL_UNIV) return window.__REBAL_UNIV;
+    var seen={}, names=[];
+    function add(n){ if(n==null) return; var s=String(n).trim(); if(!s) return;
+      var k=rbNorm(s); if(!k||seen[k]) return; seen[k]=1; names.push(s); }
+    function addKeys(o){ if(!o||typeof o!=='object') return; try{ Object.keys(o).forEach(add); }catch(e){} }
+    addKeys(window.MF_ER_TABLE);
+    var RD=(typeof window!=='undefined' && window.REFDATA)?window.REFDATA:{};
+    addKeys(RD.MF_PERF); addKeys(RD.MF_PERF_DIRECT); addKeys(RD.PMS_PERF); addKeys(RD.AIF_PERF);
+    try{ if(typeof activeRef!=='undefined' && activeRef){
+      addKeys(activeRef.MF_PERF); addKeys(activeRef.MF_PERF_DIRECT);
+      addKeys(activeRef.PMS_PERF); addKeys(activeRef.AIF_PERF); addKeys(activeRef.SIF_PERF);
+    } }catch(e){}
+    try{ (window.REBAL_FUND_EXTRAS||[]).forEach(function(f){ add(f && f.name ? f.name : f); }); }catch(e){}
+    names.sort(function(a,b){ var x=a.toLowerCase(), y=b.toLowerCase(); return x<y?-1:(x>y?1:0); });
+    window.__REBAL_UNIV={names:names, norm:names.map(rbNorm), has:seen};
+    return window.__REBAL_UNIV;
+  }
+  /* only true once the universe has actually been built — never forces the build during render */
+  function rbIsCustom(v){
+    if(!v || !String(v).trim()) return false;
+    var U=window.__REBAL_UNIV; if(!U) return false;
+    return !U.has[rbNorm(v)];
+  }
+
+  var _rbAC=null;   /* {input, apply(value)} */
+  function rbACEl(){
+    var d=document.getElementById('rb-ac');
+    if(!d){ d=document.createElement('div'); d.id='rb-ac'; document.body.appendChild(d); }
+    return d;
+  }
+  function rbACClose(){ var d=document.getElementById('rb-ac'); if(d){ d.style.display='none'; d.innerHTML=''; } _rbAC=null; }
+  function rbACOpenNow(){ var d=document.getElementById('rb-ac'); return !!(d && d.style.display==='block'); }
+  function rbACShow(input, apply){
+    var U=rbUniverse(), q=rbNorm(input.value), d=rbACEl();
+    var hits=[], total=0;
+    for(var i=0;i<U.norm.length;i++){
+      if(!q || U.norm[i].indexOf(q)>=0){ total++; if(hits.length<50) hits.push(U.names[i]); }
+    }
+    if(!hits.length){
+      d.innerHTML='<div class="rb-acn">No match in the fund universe — what you type is kept as entered.</div>';
+    } else {
+      d.innerHTML = hits.map(function(n){ return '<div class="rb-aci" data-v="'+rbEsc(n)+'">'+rbEsc(n)+'</div>'; }).join('')
+        + (total>hits.length ? '<div class="rb-acn">Showing '+hits.length+' of '+total+' matches — keep typing to narrow</div>' : '');
+    }
+    var rc=input.getBoundingClientRect();
+    var sx=(window.pageXOffset||document.documentElement.scrollLeft||0);
+    var sy=(window.pageYOffset||document.documentElement.scrollTop||0);
+    d.style.left=(rc.left+sx)+'px';
+    d.style.top=(rc.bottom+sy+2)+'px';
+    d.style.width=Math.max(240, rc.width)+'px';
+    d.style.display='block';
+    _rbAC={input:input, apply:apply};
+    d.querySelectorAll('.rb-aci').forEach(function(el){
+      el.onmousedown=function(ev){ ev.preventDefault(); ev.stopPropagation();
+        var v=el.getAttribute('data-v');
+        input.value=v; if(apply) apply(v); rbACClose(); };
+    });
+  }
+  function rbACWire(input, apply){
+    input.addEventListener('focus', function(){ rbACShow(input, apply); });
+    input.addEventListener('input', function(){ if(apply) apply(input.value); rbACShow(input, apply); });
+    input.addEventListener('blur', function(){ setTimeout(function(){ if(_rbAC && _rbAC.input===input) rbACClose(); }, 120); });
+  }
+
+  /* ── picker open/close without a re-render, so a click on an option is never orphaned ── */
+  function rbClosePicker(){
+    REBAL_OPEN=null; REBAL_PICKQ='';
+    var s=document.getElementById('s-rebal'); if(!s) return;
+    s.querySelectorAll('.rb-pick').forEach(function(el){ el.style.display='none'; });
+    s.querySelectorAll('.rb-addbtn').forEach(function(el){ el.className='rb-addbtn'; });
+  }
+  function rbWireDoc(){
+    if(_rbDocWired) return; _rbDocWired=true;
+    document.addEventListener('mousedown', function(ev){
+      var t=ev.target;
+      if(REBAL_OPEN!=null && !(t && t.closest && (t.closest('.rb-pick')||t.closest('.rb-addbtn')))) rbClosePicker();
+      if(rbACOpenNow() && !(t && t.closest && (t.closest('#rb-ac')||t.closest('.rb-au')))) rbACClose();
+    }, true);
+    document.addEventListener('keydown', function(ev){
+      if(ev.key!=='Escape' && ev.keyCode!==27) return;
+      if(rbACOpenNow()){ rbACClose(); return; }
+      if(REBAL_OPEN!=null) rbClosePicker();
+    }, true);
+  }
+
+  /* ── the renderer ─────────────────────────────────────────────────────────────── */
+  function renderRebal(){
+    var s=document.getElementById('s-rebal');
+    if(!s) return;
+    rebalCSS(); rbWireDoc(); rbACClose();
+    if(!model){
+      s.innerHTML='<div class="card"><p style="font-family:Cambria;font-size:13px;color:#888;">Upload a base file to build a rebalancing plan.</p></div>';
+      REBAL_ROWS=[]; REBAL_FUNDS=null; try{ window.__REBAL_DATA=null; }catch(e){}
+      return;
+    }
+    /* wipe RM state when the underlying model changes, so one family's plan never leaks into another */
+    var tag=rbTag();
+    if(tag!==REBAL_TAG){ REBAL_TAG=tag; REBAL_STATE={}; REBAL_FILTER=null; REBAL_OPEN=null; REBAL_PICKQ=''; REBAL_NEW=[]; REBAL_NEWSEQ=0; }
+
+    if(!(model.holdings||[]).length){
+      s.innerHTML=dlBar('rebal')+'<div class="card"><p style="font-family:Cambria;font-size:13px;color:#888;">No holdings in the base file to rebalance.</p></div>';
+      REBAL_ROWS=[]; REBAL_FUNDS=null; try{ window.__REBAL_DATA=null; }catch(e){}
+      return;
+    }
+
+    REBAL_FUNDS=rbFundIndex();
+    var rows=rbBuildRows(); REBAL_ROWS=rows;
+    var boxes=rbBoxAgg(rows), sum=rbSummary(rows), U=model.unit;
+
+    /* --- five action boxes, each with its own "+ Add fund" picker --- */
+    var bx='<div class="rb-boxes">';
+    REBAL_ACTIONS.forEach(function(a){
+      var b=boxes[a], c=REBAL_BOXCOL[a], on=(REBAL_FILTER===a), isNewBox=(a==='New Addition');
+      bx+='<div class="rb-box'+(on?' on':'')+'" data-a="'+rbEsc(a)+'">'
+        + '<div class="rb-bh rb-bfil" data-a="'+rbEsc(a)+'" style="background:'+c.bg+';color:'+c.fg+';" title="Click to filter the table to '+rbEsc(a)+'">'+rbEsc(a)+'</div>'
+        + '<div class="rb-bm rb-bfil" data-a="'+rbEsc(a)+'" title="Click to filter the table to '+rbEsc(a)+'">'
+          + '<div><span class="rb-bnum" data-bnum="'+rbEsc(a)+'">'+b.count+'</span> <span class="rb-bsub">instrument'+(b.count===1?'':'s')+'</span></div>'
+          + '<div class="rb-bamt" data-bamt="'+rbEsc(a)+'">'+U.m(b.amtCr)+'</div>'
+          + '<div class="rb-bpct" data-bpct="'+rbEsc(a)+'">'+(b.pct==null?'—':b.pct.toFixed(2)+'%')+' of portfolio</div>'
+        + '</div>'
+        + '<div class="rb-bl" data-blist="'+rbEsc(a)+'">'
+          + (b.names.length ? b.names.map(function(n){ return '<div>'+rbEsc(n)+'</div>'; }).join('')
+                            : '<div class="rb-bempty">No instruments assigned.</div>')
+        + '</div>'
+        + '<div class="rb-bf"><button type="button" class="rb-addbtn" data-a="'+rbEsc(a)+'">'
+          + (isNewBox ? '+ Add new instrument' : '+ Add fund') + '</button></div>';
+      if(!isNewBox) bx += rbPickerHTML(a);
+      bx += '</div>';
+    });
+    bx+='</div>';
+
+    /* --- control bar --- */
+    var bar='<div class="rb-bar">'
+      + (REBAL_FILTER ? '<span class="rb-chip" id="rb-clearfilter">Filtered to <b>'+rbEsc(REBAL_FILTER)+'</b> &nbsp;&times; clear</span>' : '')
+      + '<span style="font-size:11px;color:#888;">'+REBAL_FUNDS.list.length+' unique instrument'+(REBAL_FUNDS.list.length===1?'':'s')+' in the base file &middot; '+rows.length+' in the plan</span>'
+      + '</div>';
+
+    /* --- the eight-column table --- */
+    var actOpts=function(cur){
+      return REBAL_ACTIONS.map(function(a){ return '<option value="'+rbEsc(a)+'"'+(a===cur?' selected':'')+'>'+rbEsc(a)+'</option>'; }).join('')
+           + '<option value="__remove">— Remove from plan</option>';
+    };
+    var t;
+    if(!rows.length){
+      t='<div class="rb-empty">No instruments selected. Use the <b>+ Add fund</b> control on any action box above to build the plan.</div>';
+    } else {
+      t='<table class="cz rb-tbl"><colgroup>'
+      + '<col style="width:11%"><col style="width:17%"><col style="width:9%"><col style="width:8%"><col style="width:11%"><col style="width:15%"><col style="width:10%"><col style="width:19%">'
+      + '</colgroup><thead><tr>'
+      + '<th class="rb-l">Client</th><th class="rb-l">Instrument Name</th><th>Amount</th><th>% Allocation</th><th>Actionables</th>'
+      + '<th class="rb-l">Proposed Funds</th><th>Amount / %</th><th class="rb-l">Rationale</th>'
+      + '</tr></thead><tbody>';
+
+      var shown=0;
+      rows.forEach(function(r,i){
+        if(REBAL_FILTER && r.st.action!==REBAL_FILTER) return;
+        shown++;
+        var st=r.st;
+        /* col 1 — Client */
+        var c0;
+        if(r.isNew){
+          c0='<span style="color:#999">&mdash;</span>';
+        } else if(r.fi && r.fi.clients.length>1){
+          c0='<select class="rb-sel rb-cl" data-i="'+i+'">'
+             + '<option value=""'+(st.client==null?' selected':'')+'>All clients (combined)</option>'
+             + r.fi.clients.map(function(cc){
+                 return '<option value="'+rbEsc(cc.client)+'"'+(st.client===cc.client?' selected':'')+'>'+rbEsc(cc.client)+' — '+rbEsc(U.m(cc.cmvCr))+'</option>';
+               }).join('')
+             + '</select>';
+        } else {
+          var only=(r.fi&&r.fi.clients[0])?r.fi.clients[0]:null;
+          c0='<div class="rb-nm">'+rbEsc(only?only.client:'')+'</div>';
+        }
+        /* col 2 — Instrument Name (client dropped from the sub-line; it has its own column now) */
+        var c1 = r.isNew
+          ? '<input type="text" class="rb-in txt rb-newname rb-au" data-i="'+i+'" value="'+rbEsc(st.newName||'')+'" placeholder="New instrument name">'
+            + (rbIsCustom(st.newName)?'<span class="rb-cust">custom</span> ':'')
+            + '<div class="rb-sub">Manually added &nbsp;<button type="button" class="rb-mini rb-delrow" data-i="'+i+'" title="Remove this row">&times;</button></div>'
+          : '<div class="rb-nm">'+rbEsc(r.name)+'</div><div class="rb-sub">'+rbEsc(r.sub)+'</div>';
+        /* col 3 — Amount (interlinked with col 4) */
+        var c2 = r.isNew
+          ? '<input type="number" class="rb-in rb-newamt" data-i="'+i+'" min="0" step="0.01" value="'+(st.newAmtCr!=null?U.v(st.newAmtCr):'')+'" placeholder="0.00"><div class="rb-of">'+rbEsc(U.lab)+'</div>'
+          : '<input type="number" class="rb-in rb-amtin" data-i="'+i+'" min="0" step="0.01" value="'+rbFx(U.v(r.amtCr))+'">'
+            + '<div class="rb-of" data-base="'+i+'">of '+U.m(r.baseCr)+'</div>';
+        /* col 4 — % Allocation */
+        var c3 = r.isNew
+          ? '<span style="color:#999">&mdash;</span>'
+          : '<input type="number" class="rb-in rb-pct" data-i="'+i+'" min="0" max="100" step="0.01" value="'+(st.pctAlloc!=null?rbFx(st.pctAlloc):100)+'">';
+        /* col 5 — Actionables */
+        var c4 = '<select class="rb-sel rb-act" data-i="'+i+'">'+actOpts(st.action)+'</select>';
+        /* cols 6 + 7 — Proposed Funds and their Amount / % */
+        var c5='', c6='';
+        (st.proposed||[]).forEach(function(p,pi){
+          c5 += '<div class="rb-pfblk"><div class="rb-pfrow">'
+              + '<input type="text" class="rb-in txt rb-pf rb-au" data-i="'+i+'" data-p="'+pi+'" value="'+rbEsc(p.fund||'')+'" placeholder="Proposed fund">'
+              + '<button type="button" class="rb-mini rb-delpf" data-i="'+i+'" data-p="'+pi+'" title="Remove">&times;</button></div>'
+              + '<div class="rb-pflab" data-pcus="'+i+'-'+pi+'">'+(rbIsCustom(p.fund)?'<span class="rb-cust">custom</span>':'')+'</div></div>';
+          c6 += '<div class="rb-pfblk">'
+              + '<input type="number" class="rb-in sm rb-pfa" data-i="'+i+'" data-p="'+pi+'" min="0" step="0.01" title="Amount ('+rbEsc(U.lab)+')" value="'+rbFx(U.v(r.propAmts[pi]||0))+'">'
+              + '<input type="number" class="rb-in sm rb-pfp" data-i="'+i+'" data-p="'+pi+'" min="0" max="100" step="0.01" title="% of the amount released from this row" style="margin-top:3px;" value="'+(p.pct!=null&&p.pct!==''?rbFx(p.pct):'')+'" placeholder="%">'
+              + '</div>';
+        });
+        c5 += '<button type="button" class="rb-mini rb-addpf" data-i="'+i+'">+ fund</button>';
+        var warn = ((st.proposed||[]).length && Math.abs(r.sumPct-100)>0.005)
+          ? '<div class="rb-warn" data-sig="'+i+'">&Sigma; '+r.sumPct.toFixed(2)+'%</div>'
+          : '<div data-sig="'+i+'"></div>';
+        c6 += warn;
+        /* col 8 — Rationale */
+        var c7 = '<textarea class="rb-rat" data-i="'+i+'" rows="3" placeholder="Add rationale">'+rbEsc(st.rationale||'')+'</textarea>'
+               + (r.isNew ? '' : '<div style="text-align:right;margin-top:2px;"><button type="button" class="rb-mini rb-redraft" data-i="'+i+'" title="Regenerate the rationale from the base file, MF Analysis, Performance and XIRR">&#8635; Re-draft</button></div>');
+
+        t += '<tr><td class="rb-l">'+c0+'</td><td class="rb-l">'+c1+'</td><td>'+c2+'</td><td>'+c3+'</td><td>'+c4+'</td>'
+           + '<td class="rb-l">'+c5+'</td><td>'+c6+'</td><td class="rb-l">'+c7+'</td></tr>';
+      });
+      if(!shown){
+        t += '<tr><td colspan="8" class="rb-l" style="color:#777;font-style:italic;">No instruments assigned to '+rbEsc(REBAL_FILTER||'')+'.</td></tr>';
+      }
+      /* --- Total row: two separately labelled figures, never read as one --- */
+      t += '<tr class="lvl-grand">'
+        + '<td class="rb-l"></td>'
+        + '<td class="rb-l"><span class="rb-tlab">Total &mdash; Instruments</span></td>'
+        + '<td><span data-tinst>'+U.m(sum.totInstr)+'</span></td>'
+        + '<td></td><td></td>'
+        + '<td class="rb-l"><span class="rb-tlab">Total &mdash; Proposed</span></td>'
+        + '<td><span data-tprop>'+U.m(sum.totProp)+'</span></td>'
+        + '<td class="rb-l"></td></tr>';
+      t += '<tr class="rb-unrow" data-unrow style="display:'+(Math.abs(sum.unallocated)>1e-9?'':'none')+';">'
+        + '<td colspan="8" class="rb-l" title="Unallocated = amount released (Exit + Partial Rebalance + Top-Up) less the amount proposed against it">'
+        + '<span data-tun>'+(Math.abs(sum.unallocated)>1e-9?'Unallocated '+U.m(sum.unallocated):'')+'</span></td></tr>';
+      t += '</tbody></table>';
+    }
+
+    /* --- summary strip --- */
+    function sv(id,lab,val,neg){ return '<div class="rb-si"><div class="rb-sl">'+lab+'</div><div class="rb-sv'+(neg?' neg':'')+'" id="'+id+'">'+val+'</div></div>'; }
+    var sm='<div class="rb-sum">'
+      + sv('rb-s-tot','Total Portfolio CMV',U.m(sum.totalCMV),false)
+      + sv('rb-s-reb','Amount Being Rebalanced',U.m(sum.released),false)
+      + sv('rb-s-pct','% of Portfolio Rebalanced',(sum.releasedPct==null?'—':sum.releasedPct.toFixed(2)+'%'),false)
+      + sv('rb-s-prop','Proposed for Redeployment',U.m(sum.proposed),false)
+      + sv('rb-s-un','Unallocated Balance',U.m(sum.unallocated),Math.abs(sum.unallocated)>1e-9)
+      + '</div>';
+
+    var note='<p class="rb-note">The plan starts empty &mdash; every instrument here was chosen by the adviser. A fund held by more than one client appears once, with a Client selector driving its Amount. '
+      + 'Amount Being Rebalanced = Exit + Partial Rebalance + Top-Up. Proposed allocations are read as a share of the amount released from their own row, so Amount and % move together in both directions. '
+      + 'Rationale text is drafted from the base file, the MF Analysis risk-reward dataset, the Performance sheet and client-level Fund XIRR &mdash; where a source has no data for an instrument, that clause is omitted rather than estimated. '
+      + 'Actionables and proposed allocations are adviser inputs, not system-generated recommendations. Portfolio as on '+rbEsc((model.meta&&model.meta.asOnDate)||'')+'.</p>';
+
+    s.innerHTML = dlBar('rebal') + '<div class="card rb-wrap">'
+      + '<h3 style="font-family:Cambria,serif;font-size:15px;margin:0 0 12px;color:#000;">Portfolio Rebalancing</h3>'
+      + bx + bar + t + sm + note + '</div>';
+
+    rbWire(s);
+    rbStash(rows, boxes, sum);
+  }
+
+  /* display helper: 2 dp for the input boxes, full precision stays in state */
+  function rbFx(v){ return (v==null||isNaN(v))?'':(Math.round(Number(v)*100)/100).toFixed(2); }
+
+  /* ── the box picker: every unique fund, grouped Asset · Product ─────────────────── */
+  function rbPickerHTML(action){
+    var FI=REBAL_FUNDS; if(!FI) return '';
+    var open=(REBAL_OPEN===action);
+    var h='<div class="rb-pick" data-a="'+rbEsc(action)+'" style="display:'+(open?'block':'none')+';">'
+        + '<div class="rb-pqw"><input type="text" class="rb-pq" data-a="'+rbEsc(action)+'" placeholder="Type to filter instruments…" value="'+rbEsc(open?REBAL_PICKQ:'')+'"></div>'
+        + '<div class="rb-pl">';
+    var any=false;
+    FI.groups.forEach(function(g){
+      if(!g.funds.length) return;
+      any=true;
+      h+='<div class="rb-pg" data-grp="1">'+rbEsc(g.asset)+' &middot; '+rbEsc(g.product)+'</div>';
+      g.funds.forEach(function(e){
+        var st=REBAL_STATE[e.key], mine=(st && st.action===action);
+        var badge = (st && st.action!==action) ? '<span class="rb-pobd">'+rbEsc(st.action)+'</span>' : '';
+        var tick  = mine ? '<span class="rb-potick">&#10003;</span>' : '';
+        h+='<div class="rb-po" data-k="'+rbEsc(e.key)+'" data-a="'+rbEsc(action)+'" data-n="'+rbEsc(rbNorm(e.name))+'" title="'+rbEsc(e.name)+'">'
+          + tick + '<span class="rb-ponm">'+rbEsc(e.name)+'</span>' + badge + '</div>';
+      });
+    });
+    if(!any) h+='<div class="rb-pnone">No instruments in the base file.</div>';
+    h+='</div><div class="rb-pnone rb-pmiss" data-a="'+rbEsc(action)+'" style="display:none;">No instrument matches that text.</div></div>';
+    return h;
+  }
+
+  /* filter the open picker in place — a re-render would take the input focus with it */
+  function rbPickFilter(action, q){
+    var s=document.getElementById('s-rebal'); if(!s) return;
+    var pk=s.querySelector('.rb-pick[data-a="'+action+'"]'); if(!pk) return;
+    var nq=rbNorm(q), hits=0;
+    var kids=pk.querySelectorAll('.rb-pl > div');
+    var lastHdr=null, hdrHits=0;
+    kids.forEach(function(el){
+      if(el.className==='rb-pg'){
+        if(lastHdr) lastHdr.style.display=hdrHits?'':'none';
+        lastHdr=el; hdrHits=0; return;
+      }
+      if(el.className.indexOf('rb-po')<0) return;
+      var ok = !nq || (el.getAttribute('data-n')||'').indexOf(nq)>=0;
+      el.style.display = ok?'':'none';
+      if(ok){ hits++; hdrHits++; }
+    });
+    if(lastHdr) lastHdr.style.display=hdrHits?'':'none';
+    var ms=pk.querySelector('.rb-pmiss'); if(ms) ms.style.display=hits?'none':'block';
+  }
+
+  /* ── live recalculation without a full re-render (keeps input focus) ───────────── */
+  function rbRecalc(){
+    var s=document.getElementById('s-rebal'); if(!s||!model) return;
+    var U=model.unit, rows=REBAL_ROWS;
+    rows.forEach(function(r,i){
+      var st=r.st;
+      if(!r.isNew && r.fi) r.baseCr=rbBaseCr(r.fi, st.client);
+      r.amtCr = r.isNew ? (Number(st.newAmtCr)||0) : (r.baseCr*((Number(st.pctAlloc)||0)/100));
+      r.sumPct = (st.proposed||[]).reduce(function(a,p){ return a+(Number(p.pct)||0); },0);
+      r.propAmts = (st.proposed||[]).map(function(p){ return r.amtCr*((Number(p.pct)||0)/100); });
+      var be=s.querySelector('[data-base="'+i+'"]'); if(be) be.textContent='of '+U.m(r.baseCr);
+      var ai=s.querySelector('.rb-amtin[data-i="'+i+'"]');
+      if(ai && document.activeElement!==ai) ai.value=rbFx(U.v(r.amtCr));
+      var pi2=s.querySelector('.rb-pct[data-i="'+i+'"]');
+      if(pi2 && document.activeElement!==pi2) pi2.value=rbFx(st.pctAlloc);
+      r.propAmts.forEach(function(v,pj){
+        var pa=s.querySelector('.rb-pfa[data-i="'+i+'"][data-p="'+pj+'"]');
+        if(pa && document.activeElement!==pa) pa.value=rbFx(U.v(v));
+        var pp=s.querySelector('.rb-pfp[data-i="'+i+'"][data-p="'+pj+'"]');
+        if(pp && document.activeElement!==pp) pp.value=(st.proposed[pj].pct==null||st.proposed[pj].pct===''?'':rbFx(st.proposed[pj].pct));
+        var pc=s.querySelector('[data-pcus="'+i+'-'+pj+'"]');
+        if(pc) pc.innerHTML=(rbIsCustom(st.proposed[pj].fund)?'<span class="rb-cust">custom</span>':'');
+      });
+      var se=s.querySelector('[data-sig="'+i+'"]');
+      if(se){
+        if((st.proposed||[]).length && Math.abs(r.sumPct-100)>0.005){ se.className='rb-warn'; se.innerHTML='&Sigma; '+r.sumPct.toFixed(2)+'%'; }
+        else { se.className=''; se.innerHTML=''; }
+      }
+    });
+    var boxes=rbBoxAgg(rows), sum=rbSummary(rows);
+    REBAL_ACTIONS.forEach(function(a){
+      var b=boxes[a];
+      var n=s.querySelector('[data-bnum="'+a+'"]'); if(n) n.textContent=b.count;
+      var m=s.querySelector('[data-bamt="'+a+'"]'); if(m) m.textContent=U.m(b.amtCr);
+      var p=s.querySelector('[data-bpct="'+a+'"]'); if(p) p.textContent=(b.pct==null?'—':b.pct.toFixed(2)+'%')+' of portfolio';
+      /* the list is name-bearing: a New Addition row renamed in place, or a proposed fund
+         typed on one, must show through without a full re-render */
+      var L=s.querySelector('[data-blist="'+a+'"]');
+      if(L) L.innerHTML = b.names.length
+        ? b.names.map(function(n2){ return '<div>'+rbEsc(n2)+'</div>'; }).join('')
+        : '<div class="rb-bempty">No instruments assigned.</div>';
+    });
+    var ti=s.querySelector('[data-tinst]'); if(ti) ti.textContent=U.m(sum.totInstr);
+    var tp=s.querySelector('[data-tprop]'); if(tp) tp.textContent=U.m(sum.totProp);
+    var tu=s.querySelector('[data-tun]'); if(tu) tu.textContent=(Math.abs(sum.unallocated)>1e-9?'Unallocated '+U.m(sum.unallocated):'');
+    var ur=s.querySelector('[data-unrow]'); if(ur) ur.style.display=(Math.abs(sum.unallocated)>1e-9?'':'none');
+    function st2(id,v){ var e=document.getElementById(id); if(e) e.textContent=v; }
+    st2('rb-s-tot',U.m(sum.totalCMV)); st2('rb-s-reb',U.m(sum.released));
+    st2('rb-s-pct',(sum.releasedPct==null?'—':sum.releasedPct.toFixed(2)+'%'));
+    st2('rb-s-prop',U.m(sum.proposed)); st2('rb-s-un',U.m(sum.unallocated));
+    var ue=document.getElementById('rb-s-un'); if(ue) ue.className='rb-sv'+(Math.abs(sum.unallocated)>1e-9?' neg':'');
+    rbStash(rows, boxes, sum);
+  }
+
+  /* ── expose to the exporters (same pattern as window.__COST_DATA) ──────────────── */
+  function rbStash(rows, boxes, sum){
+    try{
+      window.__REBAL_DATA={
+        rows: rows.map(function(r){
+          return {name:r.name, sub:r.sub,
+                  client:(r.isNew?'':(r.st.client!=null?r.st.client:(r.fi&&r.fi.clients.length>1?'All clients (combined)':(r.fi&&r.fi.clients[0]?r.fi.clients[0].client:'')))),
+                  category:(r.fi?r.fi.category:''), asset:(r.fi?r.fi.asset:''),
+                  product:(r.fi?r.fi.product:''), isNew:r.isNew,
+                  baseCr:r.baseCr, pctAlloc:(r.isNew?null:(Number(r.st.pctAlloc)||0)), amtCr:r.amtCr,
+                  action:r.st.action,
+                  proposed:(r.st.proposed||[]).map(function(p,pi){ return {fund:(p.fund||''),pct:(p.pct===''||p.pct==null?null:Number(p.pct)),amtCr:(r.propAmts[pi]||0)}; }),
+                  sumPct:r.sumPct, rationale:(r.st.rationale||'')};
+        }),
+        boxes: REBAL_ACTIONS.map(function(a){ return {action:a,count:boxes[a].count,amtCr:boxes[a].amtCr,pct:boxes[a].pct,names:boxes[a].names.slice()}; }),
+        summary: {totalCMV:sum.totalCMV, released:sum.released, releasedPct:sum.releasedPct,
+                  proposed:sum.proposed, unallocated:sum.unallocated,
+                  totInstr:sum.totInstr, totProp:sum.totProp},
+        asOn: (model.meta&&model.meta.asOnDate)||''
+      };
+    }catch(e){}
+  }
+
+  /* ── event wiring ─────────────────────────────────────────────────────────────── */
+  /* cap the grow: a long rationale scrolls inside its own box rather than stretching the row */
+  function rbAutoGrow(el){ if(!el) return; el.style.height='auto'; el.style.height=Math.min(210, el.scrollHeight+2)+'px'; }
+
+  function rbWire(s){
+    function R(i){ return REBAL_ROWS[i]; }
+    function num(v,lo,hi){ var x=(v===''?0:Number(v)); if(isNaN(x)) x=0; if(lo!=null&&x<lo) x=lo; if(hi!=null&&x>hi) x=hi; return x; }
+    s.querySelectorAll('.rb-rat').forEach(rbAutoGrow);
+
+    /* box header / metric strip filters the table; the "+ Add fund" button does not */
+    s.querySelectorAll('.rb-bfil').forEach(function(el){
+      el.onclick=function(ev){ ev.stopPropagation();
+        var a=el.getAttribute('data-a'); REBAL_FILTER=(REBAL_FILTER===a?null:a); REBAL_OPEN=null; REBAL_PICKQ=''; renderRebal(); };
+    });
+    var cf=s.querySelector('#rb-clearfilter'); if(cf) cf.onclick=function(){ REBAL_FILTER=null; renderRebal(); };
+
+    /* "+ Add fund" — opens this box's picker, closing any other */
+    s.querySelectorAll('.rb-addbtn').forEach(function(el){
+      el.onclick=function(ev){ ev.stopPropagation(); ev.preventDefault();
+        var a=el.getAttribute('data-a');
+        if(a==='New Addition'){
+          var k=' NEW '+(++REBAL_NEWSEQ);
+          REBAL_NEW.push({key:k});
+          REBAL_STATE[k]={action:'New Addition',client:null,pctAlloc:100,proposed:[],rationale:'',rationaleEdited:false,newAmtCr:0,newName:''};
+          if(REBAL_FILTER && REBAL_FILTER!=='New Addition') REBAL_FILTER=null;
+          REBAL_OPEN=null; REBAL_PICKQ=''; renderRebal(); return;
+        }
+        var wasOpen=(REBAL_OPEN===a);
+        rbClosePicker();
+        if(wasOpen) return;
+        REBAL_OPEN=a; REBAL_PICKQ='';
+        var pk=s.querySelector('.rb-pick[data-a="'+a+'"]');
+        if(pk){ pk.style.display='block'; el.className='rb-addbtn on';
+          rbPickFilter(a,'');
+          var q=pk.querySelector('.rb-pq'); if(q){ q.value=''; try{ q.focus(); }catch(e){} }
+        }
+      };
+    });
+    s.querySelectorAll('.rb-pick').forEach(function(el){ el.onmousedown=function(ev){ ev.stopPropagation(); }; });
+    s.querySelectorAll('.rb-pq').forEach(function(el){
+      el.oninput=function(){ REBAL_PICKQ=el.value; rbPickFilter(el.getAttribute('data-a'), el.value); };
+      el.onclick=function(ev){ ev.stopPropagation(); };
+    });
+    s.querySelectorAll('.rb-po').forEach(function(el){
+      el.onclick=function(ev){ ev.stopPropagation();
+        rbSetAction(el.getAttribute('data-k'), el.getAttribute('data-a')); };
+    });
+
+    /* Client selector — re-drives Amount for that row */
+    s.querySelectorAll('.rb-cl').forEach(function(el){
+      el.onchange=function(){ var r=R(+el.getAttribute('data-i')); if(!r) return;
+        r.st.client = (el.value===''?null:el.value);
+        if(r.fi) r.baseCr=rbBaseCr(r.fi, r.st.client);
+        rbRecalc(); };
+    });
+
+    /* ---- interlinked instrument Amount <-> % ---- */
+    s.querySelectorAll('.rb-pct').forEach(function(el){
+      el.oninput=function(){ if(_rbEditing) return; var r=R(+el.getAttribute('data-i')); if(!r) return;
+        _rbEditing=true;
+        try{ r.st.pctAlloc=num(el.value,0,100); rbRecalc(); }
+        finally{ _rbEditing=false; } };
+    });
+    s.querySelectorAll('.rb-amtin').forEach(function(el){
+      el.oninput=function(){ if(_rbEditing) return; var r=R(+el.getAttribute('data-i')); if(!r) return;
+        _rbEditing=true;
+        try{
+          var U=model.unit, amtCr=num(el.value,0,null)/(U.scale||1);
+          r.st.pctAlloc = r.baseCr ? Math.min(100, amtCr/r.baseCr*100) : 0;
+          rbRecalc();
+        } finally{ _rbEditing=false; } };
+    });
+    s.querySelectorAll('.rb-newamt').forEach(function(el){
+      el.oninput=function(){ if(_rbEditing) return; var r=R(+el.getAttribute('data-i')); if(!r) return;
+        _rbEditing=true;
+        try{ var v=num(el.value,0,null);
+          r.st.newAmtCr=(model.unit.scale? v/model.unit.scale : v); r.baseCr=r.st.newAmtCr; rbRecalc(); }
+        finally{ _rbEditing=false; } };
+    });
+    s.querySelectorAll('.rb-newname').forEach(function(el){
+      rbACWire(el, function(v){ var r=R(+el.getAttribute('data-i')); if(!r) return;
+        r.st.newName=v; r.name=v; rbRecalc(); });
+    });
+
+    /* ---- Actionables (N5: same operation as the picker) ---- */
+    s.querySelectorAll('.rb-act').forEach(function(el){
+      el.onchange=function(){ var r=R(+el.getAttribute('data-i')); if(!r) return;
+        var v=el.value;
+        if(v==='__remove'){ rbRemoveRow(r.key); return; }
+        if(r.isNew){ r.st.action=v; if(REBAL_FILTER&&REBAL_FILTER!==v) REBAL_FILTER=null; renderRebal(); return; }
+        rbSetAction(r.key, v); };
+    });
+
+    /* ---- proposed funds ---- */
+    s.querySelectorAll('.rb-pf').forEach(function(el){
+      rbACWire(el, function(v){ var r=R(+el.getAttribute('data-i')); if(!r) return;
+        var p=r.st.proposed[+el.getAttribute('data-p')]; if(p){ p.fund=v; rbRecalc(); } });
+    });
+    s.querySelectorAll('.rb-pfp').forEach(function(el){
+      el.oninput=function(){ if(_rbEditing) return; var r=R(+el.getAttribute('data-i')); if(!r) return;
+        var p=r.st.proposed[+el.getAttribute('data-p')]; if(!p) return;
+        _rbEditing=true;
+        try{ p.pct=(el.value===''?'':num(el.value,0,null)); rbRecalc(); }
+        finally{ _rbEditing=false; } };
+    });
+    s.querySelectorAll('.rb-pfa').forEach(function(el){
+      el.oninput=function(){ if(_rbEditing) return; var r=R(+el.getAttribute('data-i')); if(!r) return;
+        var p=r.st.proposed[+el.getAttribute('data-p')]; if(!p) return;
+        _rbEditing=true;
+        try{
+          var U=model.unit, amtCr=num(el.value,0,null)/(U.scale||1);
+          p.pct = r.amtCr ? (amtCr/r.amtCr*100) : '';
+          rbRecalc();
+        } finally{ _rbEditing=false; } };
+    });
+    s.querySelectorAll('.rb-addpf').forEach(function(el){
+      el.onclick=function(){ var r=R(+el.getAttribute('data-i')); if(!r) return;
+        (r.st.proposed||(r.st.proposed=[])).push({fund:'',pct:''}); renderRebal(); };
+    });
+    s.querySelectorAll('.rb-delpf').forEach(function(el){
+      el.onclick=function(){ var r=R(+el.getAttribute('data-i')); if(!r) return;
+        r.st.proposed.splice(+el.getAttribute('data-p'),1); renderRebal(); };
+    });
+
+    /* ---- rationale ---- */
+    s.querySelectorAll('.rb-rat').forEach(function(el){
+      el.oninput=function(){ var r=R(+el.getAttribute('data-i')); if(!r) return;
+        r.st.rationale=el.value; r.st.rationaleEdited=true; rbAutoGrow(el); rbRecalc(); };
+    });
+    s.querySelectorAll('.rb-redraft').forEach(function(el){
+      el.onclick=function(){ var r=R(+el.getAttribute('data-i')); if(!r||!r.fi) return;
+        r.st.rationale=rbDraftFor(r.fi); r.st.rationaleEdited=false; renderRebal(); };
+    });
+    s.querySelectorAll('.rb-delrow').forEach(function(el){
+      el.onclick=function(){ var r=R(+el.getAttribute('data-i')); if(!r||!r.isNew) return; rbRemoveRow(r.key); };
+    });
   }
 
 
