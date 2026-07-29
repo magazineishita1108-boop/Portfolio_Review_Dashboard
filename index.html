@@ -1756,6 +1756,14 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
     /* a section divider is emitted only when something behind it survives the
        selection — an "Annexure" divider with no slides after it reads as a
        production error in a client deck */
+    /* Slides that belong in every deck the analyst hands over: the monthly
+       market update, the disclaimer and the closing slide. True for a full
+       export and for a picker selection; false for a single-slide download,
+       where bundling extras would defeat the button. */
+    function ALWAYS(){
+      if(!only) return true;
+      return Object.prototype.toString.call(only)==='[object Array]';
+    }
     function SHOW_ANY(keys){
       if(!only) return true;
       for(var i=0;i<keys.length;i++) if(SHOW(keys[i])) return true;
@@ -1832,10 +1840,10 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       s.addText(txt,{x:x+0.2,y:y,w:w,h:0.3,fontFace:F,fontSize:11,bold:true,color:color||C.black,valign:"middle"});
     }
 
-    if(!only) (function(){ var d=(typeof DIVIDERS!=="undefined")?DIVIDERS.market:""; if(d){ var s=pptx.addSlide(); s.background={color:"FFFFFF"}; s.addImage({data:d,x:0,y:0,w:W,h:Hh,sizing:{type:"contain",w:W,h:Hh}}); } })();
+    if(ALWAYS()) (function(){ var d=(typeof DIVIDERS!=="undefined")?DIVIDERS.market:""; if(d){ var s=pptx.addSlide(); s.background={color:"FFFFFF"}; s.addImage({data:d,x:0,y:0,w:W,h:Hh,sizing:{type:"contain",w:W,h:Hh}}); } })();
 
     /* ---- MARKET UPDATE (monthly; inserted before Asset Allocation) ---- */
-    if(!only) (function(){ var imgs=(typeof MARKET_UPDATE_IMAGES!=="undefined"&&MARKET_UPDATE_IMAGES.length)?MARKET_UPDATE_IMAGES:[]; imgs.forEach(function(d){ if(!d)return; var s=pptx.addSlide(); s.background={color:"FFFFFF"}; s.addImage({data:d,x:0,y:0,w:W,h:Hh,sizing:{type:"contain",w:W,h:Hh}}); try{ var __lg=(typeof BRAND_LOGO!=="undefined"&&BRAND_LOGO)?BRAND_LOGO:""; if(__lg){ var __ar=__imgAR(__lg)||4.815, __h=0.42, __w=__h*__ar, __mw=2.2; if(__w>__mw){__w=__mw;__h=__w/__ar;} var __rx=13.15, __x=__rx-__w, __y=0.16; s.addShape(pptx.ShapeType.roundRect,{x:__x-0.13,y:__y-0.09,w:__w+0.26,h:__h+0.18,rectRadius:0.05,fill:{color:"000000"},line:{type:"none"}}); s.addImage({data:__lg,x:__x,y:__y,w:__w,h:__h}); } }catch(e){} }); })();
+    if(ALWAYS()) (function(){ var imgs=(typeof MARKET_UPDATE_IMAGES!=="undefined"&&MARKET_UPDATE_IMAGES.length)?MARKET_UPDATE_IMAGES:[]; imgs.forEach(function(d){ if(!d)return; var s=pptx.addSlide(); s.background={color:"FFFFFF"}; s.addImage({data:d,x:0,y:0,w:W,h:Hh,sizing:{type:"contain",w:W,h:Hh}}); try{ var __lg=(typeof BRAND_LOGO!=="undefined"&&BRAND_LOGO)?BRAND_LOGO:""; if(__lg){ var __ar=__imgAR(__lg)||4.815, __h=0.42, __w=__h*__ar, __mw=2.2; if(__w>__mw){__w=__mw;__h=__w/__ar;} var __rx=13.15, __x=__rx-__w, __y=0.16; s.addShape(pptx.ShapeType.roundRect,{x:__x-0.13,y:__y-0.09,w:__w+0.26,h:__h+0.18,rectRadius:0.05,fill:{color:"000000"},line:{type:"none"}}); s.addImage({data:__lg,x:__x,y:__y,w:__w,h:__h}); } }catch(e){} }); })();
 
     if(!only) (function(){ var d=(typeof DIVIDERS!=="undefined")?DIVIDERS.portfolio:""; if(d){ var s=pptx.addSlide(); s.background={color:"FFFFFF"}; s.addImage({data:d,x:0,y:0,w:W,h:Hh,sizing:{type:"contain",w:W,h:Hh}}); } })();
 
@@ -2043,37 +2051,36 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
     });
 
     /* ---- 4. EQUITY ANALYTICS ---- */
-    if (SHOW('analytics') && model.equityAnalytics.hasData){
-      var s = base("Portfolio Analytics — Equity");
-      var ea=model.equityAnalytics;
-      // mcap column chart (top-left)
+    /* One builder for both the current and the post-rebalancing analytics
+       slides. They must look identical — same charts, same layout, same table
+       — so they are rendered by the same code with a different source model
+       rather than two implementations that drift apart. */
+    function analyticsEquitySlide(ea, title, note, insightTxt){
+      var s = base(title);
       kpi(s,0.12,1.00,3.17,String(ea.totalStockCount||0),"Total Number of Stocks");
       kpi(s,3.41,1.00,3.17,String(ea.uniqueStockCount||0),"Total Unique Number of Stocks");
       s.addText("Market-Cap Allocation (% of equity)",{x:0.2,y:1.74,w:6.3,h:0.3,fontFace:F,fontSize:11,bold:true,color:C.black});
       s.addShape(pptx.ShapeType.roundRect,{x:0.12,y:2.02,w:6.46,h:2.10,rectRadius:0.04,fill:{color:"FFFFFF"},line:{color:C.greyL,width:1}}); s.addChart(pptx.ChartType.bar,[{name:"Market Cap",labels:ea.mcap.map(function(m){return m.k;}),values:ea.mcap.map(function(m){return Math.round(m.pct*100)/100;})}],
         {x:0.2,y:2.07,w:6.3,h:2.00,barDir:"col",chartColors:[C.gold],showValue:true,dataLabelFormatCode:'0.00"%"',dataLabelFontFace:F,dataLabelColor:C.black,dataLabelFontSize:9,
          catAxisLabelFontFace:F,catAxisLabelColor:C.black,catAxisLabelFontSize:9,valAxisHidden:true,valGridLine:{style:'none'},catGridLine:{style:'none'},showLegend:false});
-      // sectors horizontal bar (bottom-left)
       s.addText("Top Sectors (% of equity)",{x:0.2,y:4.20,w:6.3,h:0.3,fontFace:F,fontSize:11,bold:true,color:C.black});
       var sec=ea.sectors.slice(0,10).slice().reverse();
       s.addShape(pptx.ShapeType.roundRect,{x:0.12,y:4.48,w:6.46,h:2.04,rectRadius:0.04,fill:{color:"FFFFFF"},line:{color:C.greyL,width:1}}); s.addChart(pptx.ChartType.bar,[{name:"Sectors",labels:sec.map(function(x){return x.k;}),values:sec.map(function(x){return Math.round(x.pct*100)/100;})}],
         {x:0.2,y:4.53,w:6.3,h:1.94,barDir:"bar",chartColors:[C.gold],showValue:true,dataLabelFormatCode:'0.00"%"',dataLabelFontFace:F,dataLabelColor:C.black,dataLabelFontSize:8,
          catAxisLabelFontFace:F,catAxisLabelColor:C.black,catAxisLabelFontSize:8,valAxisHidden:true,valGridLine:{style:'none'},catGridLine:{style:'none'},showLegend:false});
-      // top holdings table (right)
       var th=[[cell("Top Underlying Holdings",{bold:true,color:"FFFFFF",fill:{color:C.black}}),cell("% Eq",{bold:true,color:"FFFFFF",fill:{color:C.black},align:"right"})]];
       ea.stocks.slice(0,20).forEach(function(st,i){
         var fill = i%2?"F4EEE6":"FFFFFF";
         th.push([cell(st.k,{fill:{color:fill},fontSize:8.5}),cell(st.pct.toFixed(2),{align:"right",fill:{color:fill},fontSize:8.5})]);
       });
       s.addTable(th,{x:6.75,y:1.05,w:6.4,colW:[5.3,1.1],rowH:0.255,fontFace:F,fontSize:8.5,valign:"middle",border:{type:"solid",color:"D9D9D9",pt:0.5}});
-      if(INS.equity) insight(s, INS.equity, 0.2, 6.55, 12.95, 0.3);
-      foot(s,"*Analytics as on "+model.meta.dataDates.analytics+". Equity sleeve weighted by holding CMV; block sums to 100.00%. "+ea.uniqueStockNote);
+      if(insightTxt) insight(s, insightTxt, 0.2, 6.55, 12.95, 0.3);
+      foot(s, note);
+      return s;
     }
 
-    /* ---- 4b. DEBT ANALYTICS ---- */
-    if (SHOW('analytics') && model.debtAnalytics.hasData){
-      var sd = base("Portfolio Analytics — Debt");
-      var da=model.debtAnalytics;
+    function analyticsDebtSlide(da, title, note){
+      var sd = base(title);
       var _dn=function(v){return (v==null||isNaN(v))?"—":Number(v).toFixed(2);};
       kpi(sd,0.12,1.10,3.18,_dn(da.avgModDur),"Avg Modified Duration (yrs)");
       kpi(sd,3.40,1.10,3.18,_dn(da.avgYTM)+(da.avgYTM==null?"":"%"),"Avg YTM");
@@ -2084,7 +2091,21 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       var ih=[[cell("Top Issuers",{bold:true,color:"FFFFFF",fill:{color:C.black}}),cell("% Debt",{bold:true,color:"FFFFFF",fill:{color:C.black},align:"right"})]];
       da.issuers.slice(0,20).forEach(function(it,i){ var fill=i%2?"F4EEE6":"FFFFFF"; ih.push([cell(it.k,{fill:{color:fill},fontSize:8.5}),cell(it.pct.toFixed(2),{align:"right",fill:{color:fill},fontSize:8.5})]); });
       sd.addTable(ih,{x:6.75,y:1.05,w:6.4,colW:[5.3,1.1],rowH:0.27,fontFace:F,fontSize:8.5,valign:"middle",border:{type:"solid",color:"D9D9D9",pt:0.5}});
-      foot(sd,"*Analytics as on "+model.meta.dataDates.analytics+". Issuers & ratings weighted by holding CMV. Avg Modified Duration & Avg YTM are CMV-weighted across pure debt mutual funds only ("+(da.mfCount||0)+" fund"+((da.mfCount||0)===1?"":"s")+"), per the MF Monitor.");
+      foot(sd, note);
+      return sd;
+    }
+
+    if (SHOW('analytics') && model.equityAnalytics.hasData){
+      analyticsEquitySlide(model.equityAnalytics, "Portfolio Analytics — Equity",
+        "*Analytics as on "+model.meta.dataDates.analytics+". Equity sleeve weighted by holding CMV; block sums to 100.00%. "+model.equityAnalytics.uniqueStockNote,
+        INS.equity);
+    }
+
+    /* ---- 4b. DEBT ANALYTICS ---- */
+    if (SHOW('analytics') && model.debtAnalytics.hasData){
+      var _da0=model.debtAnalytics;
+      analyticsDebtSlide(_da0, "Portfolio Analytics — Debt",
+        "*Analytics as on "+model.meta.dataDates.analytics+". Issuers & ratings weighted by holding CMV. Avg Modified Duration & Avg YTM are CMV-weighted across pure debt mutual funds only ("+(_da0.mfCount||0)+" fund"+((_da0.mfCount||0)===1?"":"s")+"), per the MF Monitor.");
     }
 
     /* ---- 5. OVERLAP MATRIX (dark navy + gold gradient, full fund-name rows like the Playbook) ---- */
@@ -2239,8 +2260,11 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       var F='Cambria';
       var _snap=window._cvsSnapshot||null;
       var cmv=_snap?_snap.cmv:(model.totalCMV||0);
-      var inflPct=_snap?(_snap.infl*100):(parseFloat(typeof localStorage!=='undefined'?localStorage.getItem('cvs_infl')||'6.5':'6.5'));
-      var infl=inflPct/100;
+      /* Both sources already hold a percentage: the snapshot stores the
+         input value verbatim ("6.5"), and localStorage stores the same.
+         Multiplying by 100 here printed 650.0%. */
+      var inflPct=_snap?_snap.infl:(parseFloat(typeof localStorage!=='undefined'?localStorage.getItem('cvs_infl')||'6.5':'6.5'));
+      var infl=inflPct/100;   /* fraction, for anything that needs a rate */
       s.addText('Portfolio CMV: Rs '+cmv.toFixed(0)+' Cr  |  Inflation assumption: '+inflPct.toFixed(1)+'%  |  Returns based on dashboard inputs',{x:0.18,y:0.95,w:12.5,h:0.22,fontFace:F,fontSize:8.5,color:'555555'});
       var groups=_snap?_snap.groups:[
         {label:'Debt',rows:[{l:'Mutual Funds',ca:0,cr:6.75,pa:2.5,pr:6.75},{l:'Bonds',ca:0,cr:8.0,pa:0,pr:8.0},{l:'Debt – AIF',ca:0,cr:12.0,pa:12.5,pr:12.0},{l:'Long-Short AIF',ca:0,cr:8.0,pa:0,pr:8.0},{l:'Hybrid Long Short SIF',ca:0,cr:9.0,pa:7.5,pr:10.0},{l:'PMS',ca:0,cr:10.0,pa:5.0,pr:10.0},{l:'MLD',ca:0,cr:9.0,pa:0,pr:9.0}]},
@@ -2761,37 +2785,15 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       var RB = (typeof window!=='undefined') ? window.__REBAL_DATA : null;
       var P  = RB && RB.post;
       if(!P) return;
-      function mixTable(s, title, items, x, y, w, valLab){
-        if(!items||!items.length) return y;
-        sectionLabel(s,title,x,y,w,C.black);
-        var body=[[cell('',{bold:true,color:'FFFFFF',fill:{color:C.black},align:'left',fontSize:8}),
-                   cell(valLab,{bold:true,color:'FFFFFF',fill:{color:C.black},align:'right',fontSize:8})]];
-        items.slice(0,14).forEach(function(o,i){
-          var f=(i%2)?'FCFAF7':'FFFFFF';
-          body.push([cell(o.k,{fill:{color:f},align:'left',fontSize:8}),
-                     cell(Number(o.pct).toFixed(2),{fill:{color:f},align:'right',fontSize:8})]);
-        });
-        s.addTable(body,{x:x,y:y+0.34,w:w,colW:[w*0.68,w*0.32],border:{type:'solid',color:C.greyL,pt:0.5},rowH:0.19,valign:'middle',autoPage:false});
-        return y+0.34+body.length*0.19+0.20;
-      }
+      var miss = P.missNote || '';
       if(P.equity && P.equity.hasData){
-        var s1=base('Post-Rebalancing Analytics — Equity');
-        kpi(s1,0.18,1.02,2.6,String(P.equity.totalStockCount||0),'Total Number of Stocks');
-        kpi(s1,2.92,1.02,2.6,String(P.equity.uniqueStockCount||0),'Total Unique Number of Stocks');
-        mixTable(s1,'Market-Cap Allocation',P.equity.mcap,0.18,1.80,5.34,'% Eq');
-        mixTable(s1,'Top Sectors',P.equity.sectors,5.70,1.02,3.55,'% Eq');
-        mixTable(s1,'Top Underlying Holdings',P.equity.stocks,9.45,1.02,3.70,'% Eq');
-        foot(s1,'The portfolio as it would stand after the rebalancing plan. Equity sleeve weighted by rebalanced CMV; each block sums to 100.00%. Analytics as on '+model.meta.dataDates.analytics+'.'+(P.missNote||''));
+        analyticsEquitySlide(P.equity, 'Post-Rebalancing Analytics — Equity',
+          'The portfolio as it would stand after the rebalancing plan. Equity sleeve weighted by rebalanced CMV; block sums to 100.00%. Analytics as on '+model.meta.dataDates.analytics+'.'+miss,
+          null);
       }
       if(P.debt && P.debt.hasData){
-        var s2=base('Post-Rebalancing Analytics — Debt');
-        var dn=function(v){return (v==null||isNaN(v))?'—':Number(v).toFixed(2);};
-        kpi(s2,0.18,1.02,2.6,dn(P.debt.avgModDur),'Avg Modified Duration (yrs)');
-        kpi(s2,2.92,1.02,2.6,dn(P.debt.avgYTM)+(P.debt.avgYTM==null?'':'%'),'Avg YTM');
-        mixTable(s2,'Credit Rating',P.debt.ratings,0.18,1.80,5.34,'% Debt');
-        mixTable(s2,'Sector',P.debt.sectors,5.70,1.02,3.55,'% Debt');
-        mixTable(s2,'Top Issuers',P.debt.issuers,9.45,1.02,3.70,'% Debt');
-        foot(s2,'The portfolio as it would stand after the rebalancing plan. Debt sleeve weighted by rebalanced CMV; each block sums to 100.00%. Analytics as on '+model.meta.dataDates.analytics+'.'+(P.missNote||''));
+        analyticsDebtSlide(P.debt, 'Post-Rebalancing Analytics — Debt',
+          'The portfolio as it would stand after the rebalancing plan. Debt sleeve weighted by rebalanced CMV; block sums to 100.00%. Analytics as on '+model.meta.dataDates.analytics+'.'+miss);
       }
     })();
 
@@ -2992,14 +2994,14 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
         }
       }
     })();
-    if(!only||only==='disc') (function(){
+    if(ALWAYS()||only==='disc') (function(){
       /* the supplied Disclaimer slide, verbatim — the copy is legal text and
          must not be re-typed or reflowed */
       pageNo.n++;
       var s=pptx.addSlide(); s.background={color:'FFFFFF'};
       try{ var d=(typeof TOPIC_SLIDES!=='undefined')?TOPIC_SLIDES.disc:null; if(d) s.addImage({data:d,x:0,y:0,w:W,h:Hh}); }catch(e){}
     })();
-    if(!only||only==='thank') (function(){
+    if(ALWAYS()||only==='thank') (function(){
       /* the supplied Thank You slide, verbatim */
       pageNo.n++;
       var s=pptx.addSlide(); s.background={color:'FFFFFF'};
