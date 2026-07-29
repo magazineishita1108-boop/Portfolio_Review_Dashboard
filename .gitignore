@@ -5,3 +5,8 @@ Portfolio Review_*Family*
 ~$*
 .DS_Store
 Thumbs.db
+
+# Pre-change backups of the dashboard — local changelog, never published
+# (19 of these total ~173 MB and would blow past GitHub's file-size limits)
+*.pre_*
+.~lock.*
