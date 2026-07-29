@@ -206,6 +206,14 @@ html{scroll-behavior:smooth;}
 .right-sidebar.show{display:block;}
 .rnav{padding:14px 0 14px 0;display:flex;flex-direction:column;gap:2px;}
 .rnav-label{font-size:9px;font-weight:bold;letter-spacing:1.8px;color:var(--gold);text-transform:uppercase;padding:8px 12px 4px;border-bottom:1px solid var(--grey-l);margin-bottom:2px;}
+.rb-meta{font-size:11px;color:#555;line-height:1.25;display:block}
+.rb-pfmeta{font-size:11px;color:#555;display:flex;align-items:center;min-height:26px}
+.rb-tbl th{font-size:10.5px;line-height:1.2}
+.rb-tbl td{vertical-align:top}
+.rb-sortable{cursor:pointer;user-select:none;white-space:nowrap}
+.rb-sortable:hover{background:#3a3a3a}
+.rb-sortable .rb-arw{margin-left:4px;font-size:9px;opacity:.45}
+.rb-sortable.on .rb-arw{opacity:1;color:#BD9568}
 .rnav-sec{display:flex;align-items:center;gap:6px;padding:7px 10px 4px;font-family:Cambria,serif;font-size:11px;font-weight:bold;letter-spacing:.06em;text-transform:uppercase;color:#5C3E17;border-top:1px solid #E5DACB;margin-top:4px}
 .rnav-sub .rnav-lb{padding-left:12px;font-size:11.5px;color:#6b6b6b}
 .rnav-cb{cursor:pointer;accent-color:#BD9568;flex:0 0 auto;margin:0}
@@ -5688,6 +5696,81 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
     'New Addition':      {bg:'#D9D9D9', fg:'#000000'},
     'Top-Up':            {bg:'#BFBFBF', fg:'#000000'}
   };
+  var REBAL_SORT={k:null,dir:1};   /* null = natural order from rbBuildRows */
+
+  /* the client label shown in column 1, so sorting matches what is on screen */
+  function rbRowClient(r){
+    if(r.isNew) return '';
+    var st=r.st||{};
+    if(st.client!=null) return String(st.client);
+    if(r.fi && r.fi.clients && r.fi.clients.length>1) return 'All clients (combined)';
+    return (r.fi && r.fi.clients && r.fi.clients[0]) ? String(r.fi.clients[0].client||'') : '';
+  }
+
+  function rbSortVal(r,k){
+    var st=r.st||{};
+    if(k==='client') return rbRowClient(r).toLowerCase();
+    if(k==='name')   return String(r.name||'').toLowerCase();
+    if(k==='amt')    return Number(r.amtCr)||0;
+    if(k==='pct')    return r.isNew ? -1 : (Number(st.pctAlloc)||0);
+    /* by box order, not alphabet — the table then groups the way the action
+       boxes above it are laid out */
+    if(k==='action') return REBAL_ACTIONS.indexOf(st.action);
+    if(k==='icat')   return String((r.fi&&r.fi.category)||'').toLowerCase();
+    if(k==='iprod')  return String((r.fi&&r.fi.product)||'').toLowerCase();
+    if(k==='iasset') return String((r.fi&&r.fi.asset)||'').toLowerCase();
+    if(k==='prop')   return String((((st.proposed||[])[0])||{}).fund||'').toLowerCase();
+    /* the proposed columns sort on the FIRST proposed fund, matching what the
+       eye lands on at the top of the stack */
+    if(k==='pcat'||k==='pprod'||k==='passet'){
+      var f0=(((st.proposed||[])[0])||{}).fund||'';
+      if(!f0) return '';
+      var a0=rbPropAPC(f0);
+      return String(k==='pcat'?a0.category:(k==='pprod'?a0.product:a0.asset)).toLowerCase();
+    }
+    if(k==='psum')   return Number(r.sumPct)||0;
+    if(k==='rat')    { try{ return String(rbEffRationale(st)||'').toLowerCase(); }catch(e){ return ''; } }
+    return 0;
+  }
+
+  /* Sorts REBAL_ROWS itself. Do not sort a copy: the rendered rows carry
+     data-i indices that resolve through REBAL_ROWS[i]. */
+  function rbApplySort(rows){
+    if(!REBAL_SORT.k || !rows || rows.length<2) return;
+    var k=REBAL_SORT.k, d=REBAL_SORT.dir;
+    /* decorate-sort-undecorate keeps it stable, so equal rows hold their
+       original order instead of shuffling on every re-render */
+    var idx=rows.map(function(r,i){ return {r:r,i:i,v:rbSortVal(r,k)}; });
+    idx.sort(function(a,b){
+      var x=a.v, y=b.v, c;
+      if(typeof x==='number' && typeof y==='number') c = x-y;
+      else c = String(x).localeCompare(String(y));
+      return c!==0 ? c*d : a.i-b.i;
+    });
+    for(var i=0;i<idx.length;i++) rows[i]=idx[i].r;
+  }
+
+  function rbSortTh(k,lab,cls){
+    var on=(REBAL_SORT.k===k);
+    var arrow = on ? (REBAL_SORT.dir>0 ? '\u25B2' : '\u25BC') : '\u21C5';
+    return '<th class="rb-sortable'+(cls?' '+cls:'')+(on?' on':'')+'" data-sort="'+k+'" '
+      + 'title="Sort by '+lab+'">'+lab+'<span class="rb-arw">'+arrow+'</span></th>';
+  }
+
+  function rbWireSort(scope){
+    if(!scope) return;
+    Array.prototype.forEach.call(scope.querySelectorAll('.rb-sortable'), function(th){
+      th.onclick=function(){
+        var k=th.getAttribute('data-sort');
+        if(REBAL_SORT.k===k){
+          /* third click clears the sort and restores the natural order */
+          if(REBAL_SORT.dir>0) REBAL_SORT.dir=-1; else { REBAL_SORT.k=null; REBAL_SORT.dir=1; }
+        } else { REBAL_SORT.k=k; REBAL_SORT.dir=1; }
+        renderRebal();
+      };
+    });
+  }
+
   var REBAL_STATE={};      /* fundKey -> {action,client,pctAlloc,proposed:[{fund,pct}],rationale,rationaleEdited,newAmtCr,newName} */
   var REBAL_FILTER=null;   /* click-the-box-header table filter; null = show all */
   var REBAL_OPEN=null;     /* which box's "+ Add fund" picker is expanded; null = all collapsed. NOT the same thing as REBAL_FILTER. */
@@ -6219,7 +6302,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
     }
     /* wipe RM state when the underlying model changes, so one family's plan never leaks into another */
     var tag=rbTag();
-    if(tag!==REBAL_TAG){ REBAL_TAG=tag; try{ slidePickReset(); }catch(e){} REBAL_STATE={}; REBAL_FILTER=null; REBAL_OPEN=null; REBAL_PICKQ=''; REBAL_PICKDIRTY=false; REBAL_NEW=[]; REBAL_NEWSEQ=0; }
+    if(tag!==REBAL_TAG){ REBAL_TAG=tag; REBAL_SORT={k:null,dir:1}; try{ slidePickReset(); }catch(e){} REBAL_STATE={}; REBAL_FILTER=null; REBAL_OPEN=null; REBAL_PICKQ=''; REBAL_PICKDIRTY=false; REBAL_NEW=[]; REBAL_NEWSEQ=0; }
 
     if(!(model.holdings||[]).length){
       s.innerHTML=dlBar('rebal')+'<div class="card"><p style="font-family:Cambria;font-size:13px;color:#888;">No holdings in the base file to rebalance.</p></div>';
@@ -6230,6 +6313,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
 
     REBAL_FUNDS=rbFundIndex();
     var rows=rbBuildRows(); REBAL_ROWS=rows;
+    rbApplySort(rows);   /* in place: data-i indices must keep matching REBAL_ROWS */
     var boxes=rbBoxAgg(rows), sum=rbSummary(rows), U=model.unit;
 
     /* --- five action boxes, each with its own "+ Add fund" picker --- */
@@ -6267,10 +6351,17 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
       t='<div class="rb-empty">No instruments selected. Use the <b>+ Add fund</b> control on any action box above to build the plan.</div>';
     } else {
       t='<table class="cz rb-tbl"><colgroup>'
-      + '<col style="width:11%"><col style="width:17%"><col style="width:9%"><col style="width:8%"><col style="width:11%"><col style="width:15%"><col style="width:10%"><col style="width:19%">'
+      + '<col style="width:7%"><col style="width:12%"><col style="width:7%"><col style="width:6%"><col style="width:5%">'
+      + '<col style="width:6%"><col style="width:5%"><col style="width:8%">'
+      + '<col style="width:11%"><col style="width:7%"><col style="width:6%"><col style="width:5%">'
+      + '<col style="width:6%"><col style="width:9%">'
       + '</colgroup><thead><tr>'
-      + '<th class="rb-l">Client</th><th class="rb-l">Instrument Name</th><th>Amount</th><th>% Allocation</th><th>Actionables</th>'
-      + '<th class="rb-l">Proposed Funds</th><th>Amount / %</th><th class="rb-l">Rationale</th>'
+      + rbSortTh('client','Client','rb-l')+rbSortTh('name','Instrument Name','rb-l')
+      + rbSortTh('icat','Category','rb-l')+rbSortTh('iprod','Product Class','rb-l')+rbSortTh('iasset','Asset Class','rb-l')
+      + rbSortTh('amt','Amount')+rbSortTh('pct','% Allocation')+rbSortTh('action','Actionables')
+      + rbSortTh('prop','Proposed Funds','rb-l')
+      + rbSortTh('pcat','Category','rb-l')+rbSortTh('pprod','Product Class','rb-l')+rbSortTh('passet','Asset Class','rb-l')
+      + rbSortTh('psum','Amount / %')+rbSortTh('rat','Rationale','rb-l')
       + '</tr></thead><tbody>';
 
       var shown=0;
@@ -6298,7 +6389,11 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
           ? '<input type="text" class="rb-in txt rb-newname rb-au" data-i="'+i+'" value="'+rbEsc(st.newName||'')+'" placeholder="New instrument name">'
             + (rbIsCustom(st.newName)?'<span class="rb-cust">custom</span> ':'')
             + '<div class="rb-sub">Manually added &nbsp;<button type="button" class="rb-mini rb-delrow" data-i="'+i+'" title="Remove this row">&times;</button></div>'
-          : '<div class="rb-nm">'+rbEsc(r.name)+'</div><div class="rb-sub">'+rbEsc(r.sub)+'</div>';
+          : '<div class="rb-nm">'+rbEsc(r.name)+'</div>';   /* asset/product/category now have their own columns */
+        var fi=r.fi||{};
+        var c1a='<span class="rb-meta">'+rbEsc(fi.category||'')+'</span>';
+        var c1b='<span class="rb-meta">'+rbEsc(fi.product||'')+'</span>';
+        var c1c='<span class="rb-meta">'+rbEsc(fi.asset||'')+'</span>';
         /* col 3 — Amount (interlinked with col 4) */
         var c2 = r.isNew
           ? '<input type="number" class="rb-in rb-newamt" data-i="'+i+'" min="0" step="0.01" value="'+(st.newAmtCr!=null?U.v(st.newAmtCr):'')+'" placeholder="0.00"><div class="rb-of">'+rbEsc(U.lab)+'</div>'
@@ -6311,9 +6406,15 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
         /* col 5 — Actionables */
         var c4 = '<select class="rb-sel rb-act" data-i="'+i+'">'+actOpts(st.action)+'</select>';
         /* cols 6 + 7 — Proposed Funds and their Amount / % */
-        var c5='', c6='';
+        var c5='', c6='', c5a='', c5b='', c5c='';
         (st.proposed||[]).forEach(function(p,pi){
           var _hld=rbHeldMatch(p.fund).held;
+          /* same .rb-pfblk wrapper as the fund and amount cells, so the three
+             meta columns stay aligned row-for-row with the stack */
+          var _apc=rbPropAPC(p.fund);
+          c5a += '<div class="rb-pfblk rb-pfmeta" data-pmeta="'+i+'-'+pi+'-c">'+rbEsc(_apc.category)+'</div>';
+          c5b += '<div class="rb-pfblk rb-pfmeta" data-pmeta="'+i+'-'+pi+'-p">'+rbEsc(_apc.product)+'</div>';
+          c5c += '<div class="rb-pfblk rb-pfmeta" data-pmeta="'+i+'-'+pi+'-a">'+rbEsc(_apc.asset)+'</div>';
           c5 += '<div class="rb-pfblk"><div class="rb-pfrow">'
               + '<input type="text" class="rb-in txt rb-pf rb-au'+(_hld?' rb-held':'')+'" data-i="'+i+'" data-p="'+pi+'" value="'+rbEsc(p.fund||'')+'" placeholder="Proposed fund"'+(_hld?' title="Already held in this portfolio">':'>')
               + '<button type="button" class="rb-mini rb-delpf" data-i="'+i+'" data-p="'+pi+'" title="Remove">&times;</button></div>'
@@ -6334,23 +6435,29 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
                + '<div class="rb-heldnote" data-heldnote="'+i+'"'+(_hn?'':' style="display:none;"')+'>'+rbEsc(_hn)+'</div>'
                + (r.isNew ? '' : '<div style="text-align:right;margin-top:2px;"><button type="button" class="rb-mini rb-redraft" data-i="'+i+'" title="Regenerate the rationale from the base file, MF Analysis, Performance and XIRR">&#8635; Re-draft</button></div>');
 
-        t += '<tr><td class="rb-l">'+c0+'</td><td class="rb-l">'+c1+'</td><td>'+c2+'</td><td>'+c3+'</td><td>'+c4+'</td>'
-           + '<td class="rb-l">'+c5+'</td><td>'+c6+'</td><td class="rb-l">'+c7+'</td></tr>';
+        t += '<tr><td class="rb-l">'+c0+'</td><td class="rb-l">'+c1+'</td>'
+           + '<td class="rb-l">'+c1a+'</td><td class="rb-l">'+c1b+'</td><td class="rb-l">'+c1c+'</td>'
+           + '<td>'+c2+'</td><td>'+c3+'</td><td>'+c4+'</td>'
+           + '<td class="rb-l">'+c5+'</td>'
+           + '<td class="rb-l">'+c5a+'</td><td class="rb-l">'+c5b+'</td><td class="rb-l">'+c5c+'</td>'
+           + '<td>'+c6+'</td><td class="rb-l">'+c7+'</td></tr>';
       });
       if(!shown){
-        t += '<tr><td colspan="8" class="rb-l" style="color:#777;font-style:italic;">No instruments assigned to '+rbEsc(REBAL_FILTER||'')+'.</td></tr>';
+        t += '<tr><td colspan="14" class="rb-l" style="color:#777;font-style:italic;">No instruments assigned to '+rbEsc(REBAL_FILTER||'')+'.</td></tr>';
       }
       /* --- Total row: two separately labelled figures, never read as one --- */
       t += '<tr class="lvl-grand">'
         + '<td class="rb-l"></td>'
         + '<td class="rb-l"><span class="rb-tlab">Total &mdash; Instruments</span></td>'
+        + '<td class="rb-l"></td><td class="rb-l"></td><td class="rb-l"></td>'
         + '<td><span data-tinst>'+U.m(sum.totInstr)+'</span></td>'
         + '<td></td><td></td>'
         + '<td class="rb-l"><span class="rb-tlab">Total &mdash; Proposed</span></td>'
+        + '<td class="rb-l"></td><td class="rb-l"></td><td class="rb-l"></td>'
         + '<td><span data-tprop>'+U.m(sum.totProp)+'</span></td>'
         + '<td class="rb-l"></td></tr>';
       t += '<tr class="rb-unrow" data-unrow style="display:'+(Math.abs(sum.unallocated)>1e-9?'':'none')+';">'
-        + '<td colspan="8" class="rb-l" title="Unallocated = amount released (Exit + Partial Rebalance + Top-Up) less the amount proposed against it">'
+        + '<td colspan="14" class="rb-l" title="Unallocated = amount released (Exit + Partial Rebalance + Top-Up) less the amount proposed against it">'
         + '<span data-tun>'+(Math.abs(sum.unallocated)>1e-9?'Unallocated '+U.m(sum.unallocated):'')+'</span></td></tr>';
       t += '</tbody></table>';
     }
@@ -6377,6 +6484,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
 
     rbWire(s);
     rbWireDl(s);
+    rbWireSort(s);
     rbStash(rows, boxes, sum);
     try{ renderProposedPerf(); }catch(e){}
     /* the post-rebalancing analytics live on the Analytics tab but are driven
@@ -6462,6 +6570,13 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
                  if(_hld) pfi.title='Already held in this portfolio'; else pfi.removeAttribute('title'); }
         var pc=s.querySelector('[data-pcus="'+i+'-'+pj+'"]');
         if(pc) pc.innerHTML=(_hld?'<span class="rb-heldbd">Existing</span> ':'')+(rbIsCustom(st.proposed[pj].fund)?'<span class="rb-cust">custom</span>':'');
+        /* the three meta columns follow the typed fund, not the last render */
+        try{
+          var _pa=rbPropAPC((st.proposed[pj]||{}).fund);
+          var _mc=s.querySelector('[data-pmeta="'+i+'-'+pj+'-c"]'); if(_mc) _mc.textContent=_pa.category||'';
+          var _mp=s.querySelector('[data-pmeta="'+i+'-'+pj+'-p"]'); if(_mp) _mp.textContent=_pa.product||'';
+          var _ma=s.querySelector('[data-pmeta="'+i+'-'+pj+'-a"]'); if(_ma) _ma.textContent=_pa.asset||'';
+        }catch(e){}
       });
       var se=s.querySelector('[data-sig="'+i+'"]');
       if(se){
@@ -6603,22 +6718,49 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund-Reg(G)":{"r":0.0178,"d":0.0046
       if(!tbl) return null;
       if(tbl[nm]) return tbl[nm];
       for(var q in tbl){ if(rbK(q)===lk) return tbl[q]; }
+      /* fall back to the engine's matcher, behind the same guard the proposed
+         performance block uses, so one name resolves the same way everywhere */
+      try{
+        var keys=Object.keys(tbl);
+        if(keys.length){
+          var mk=E.matchInstrument(nm,'',keys,{});
+          if(mk && (typeof ppGuard!=='function' || ppGuard(nm,mk))) return tbl[mk];
+        }
+      }catch(e){}
       return null;
     }
     try{
       var mf=look(activeRef&&activeRef.MF_PERF)||look(activeRef&&activeRef.MF_PERF_DIRECT);
       if(mf){
         var a = mf.type==='debt' ? 'Debt' : (mf.type==='hybrid' ? 'Hybrid' : 'Equity');
-        return {asset:a, product:'Mutual Funds'};
+        /* the monitor's sheet name is the SEBI category */
+        return {asset:a, product:'Mutual Funds', category:(mf.sheet||'')};
       }
-      if(look(activeRef&&activeRef.PMS_PERF)) return {asset:'Equity', product:'PMS'};
-      if(look(activeRef&&activeRef.AIF_PERF)) return {asset:'Equity', product:'AIF'};
+      var pm=look(activeRef&&activeRef.PMS_PERF);
+      if(pm) return {asset:'Equity', product:'PMS', category:(pm.category||'')};
+      var af=look(activeRef&&activeRef.AIF_PERF);
+      if(af) return {asset:'Equity', product:'AIF', category:(af.category||'')};
     }catch(e){}
-    if(/\bdebt|bond|gilt|liquid|money market|duration|credit risk\b/i.test(nm)) return {asset:'Debt', product:'Mutual Funds'};
-    if(/\bhybrid|balanced|arbitrage|multi asset\b/i.test(nm)) return {asset:'Hybrid', product:'Mutual Funds'};
-    if(/\bpms\b/i.test(nm)) return {asset:'Equity', product:'PMS'};
-    if(/\baif\b/i.test(nm)) return {asset:'Equity', product:'AIF'};
-    return {asset:'Equity', product:'Mutual Funds'};
+    if(/\bdebt|bond|gilt|liquid|money market|duration|credit risk\b/i.test(nm)) return {asset:'Debt', product:'Mutual Funds', category:''};
+    if(/\bhybrid|balanced|arbitrage|multi asset\b/i.test(nm)) return {asset:'Hybrid', product:'Mutual Funds', category:''};
+    if(/\bpms\b/i.test(nm)) return {asset:'Equity', product:'PMS', category:''};
+    if(/\baif\b/i.test(nm)) return {asset:'Equity', product:'AIF', category:''};
+    return {asset:'Equity', product:'Mutual Funds', category:''};
+  }
+
+  /* Category / product / asset for a proposed fund. A fund the family already
+     holds resolves to its actual base-file record, so those three values are
+     read rather than inferred; anything else falls back to reference data. */
+  function rbPropAPC(fundName){
+    if(!fundName) return {category:'',product:'',asset:''};
+    try{
+      var h=rbHeldMatch(fundName);
+      if(h.held && h.holding){
+        return {category:h.holding.category||'', product:h.holding.product||'', asset:h.holding.asset||''};
+      }
+    }catch(e){}
+    var ap=rbGuessAP(fundName);
+    return {category:ap.category||'', product:ap.product||'', asset:ap.asset||''};
   }
 
   /* Total CMV currently held of each instrument, across every client. An
