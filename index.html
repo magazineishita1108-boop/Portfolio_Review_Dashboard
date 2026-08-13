@@ -1152,7 +1152,17 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
           e.stocks.forEach(function(st){ addPct(eq_stock,st[0],st[1]/100*w*Cv); eq_stock_mcap[st[0]]=st[2]; addUniq(st[0],"hyb"); });
           eq_exp += w*Cv;
         }
-        if (hy.db){ var d=hy.db, w2=(d.weight||0)/100;
+        if (hy.db){ var d=hy.db;
+          /* The sleeves partition the fund, so the debt share is whatever the
+             equity sleeve is not. Derived rather than read, because no hybrid
+             scheme in the reference data carries db.weight — and (d.weight||0)
+             silently zeroed the whole sleeve, which reads as "holds no debt"
+             rather than as missing data. A stored weight wins when present and
+             consistent with the equity side. */
+          var _ew=(hy.eq&&hy.eq.weight!=null)?hy.eq.weight:null;
+          var _dw=(d.weight!=null && _ew!=null && (d.weight+_ew)<=105) ? d.weight
+                 : (_ew!=null ? Math.max(0,100-_ew) : (d.weight!=null?d.weight:100));
+          var w2=_dw/100;
           Object.keys(d.sector).forEach(function(s){ addPct(db_sector,s,d.sector[s]/100*w2*Cv); });
           Object.keys(d.rating).forEach(function(rt){ addPct(db_rating,rt,d.rating[rt]/100*w2*Cv); });
           Object.keys(d.issuer).forEach(function(is){ addPct(db_issuer,is,d.issuer[is]/100*w2*Cv); });
