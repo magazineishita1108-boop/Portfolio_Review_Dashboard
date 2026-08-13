@@ -3340,17 +3340,34 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
     if(/government of india|\bgoi\b|\bg-?sec\b|govt\.? of india|gov(?:ernment)? stock/i.test(raw)) return "Government of India";
     if(/treps|tri[- ]?party repo/i.test(raw)) return "Tri-Party Repo (TREPS)";
     if(/clearing corp/i.test(raw)) return "Clearing Corporation of India Ltd.";
+    /* Matched before any stripping: the leading "91"/"182"/"364" of a treasury
+       bill, and a leading coupon on an SDL, both look like a coupon to the
+       leading strip and would be eaten, leaving "Days Treasury Bill - ...". */
+    if(/treasury\s*bill|\bT-?bills?\b|\bDTB\b/i.test(raw)) return "Treasury Bills";
+    if(/net\s*(?:current asset|receivable)/i.test(raw)) return "Net Current Asset";
+    var sdl=raw.match(/^\s*(?:\d+(?:\.\d+)?\s*%?\s*)?(.+?)\s+[-\u2013\u2014]?\s*SDL\b/i);
+    if(sdl) return sdl[1].replace(/\s+/g," ").trim()+" SDL";   // the state is the issuer, keep it
     var t=raw;
-    t=t.replace(/^\s*\d+(?:\.\d+)?\s*%\s*/,"");                          // leading coupon
-    t=t.replace(/\d+(?:\.\d+)?\s*%/g,"");                                // any coupon
-    t=t.replace(/\(\s*\d{1,2}[-\/][A-Za-z]{3}[-\/]\d{2,4}\s*\)/g,"");    // (dd-Mon-yyyy)
-    t=t.replace(/\b\d{1,2}[-\/][A-Za-z]{3}[-\/]\d{2,4}\b/g,"");          // dd-Mon-yyyy
-    t=t.replace(/[-\s]*\bSR[-\s.]*\w+/gi,"");                            // series e.g. SR-223
-    t=t.replace(/\b(?:PERP|PERPETUAL|CALL|TIER\s*[\dIV]+)\b/gi,"");      // perp / call / tier
-    t=t.replace(/\s+[A-Z]\d*\s*$/,"");                                   // trailing tranche letter (e.g. " A")
-    t=t.replace(/[\s,\-]+$/,"").replace(/\(\s*\)/g,"").replace(/\s{2,}/g," ").trim();
+    t=t.replace(/^\s*\d+(?:\.\d+)?\s*%?\s+/,"");                          // leading coupon
+    /* Coupon, series and maturity arrive in any order, so loop until stable. */
+    for(var _i=0;_i<4;_i++){
+      var _b=t;
+      t=t.replace(/\s*\([^)]*\)?\s*$/,"");                                 // trailing (...) even if unclosed — FIRST, or it shields the coupon
+      t=t.replace(/\s+\d{1,2}[-\/]?[A-Za-z]{3,4}[-\/]?\d{2,4}\b\.?/g,"");   // maturity, incl. misspelled months
+      t=t.replace(/\s*[-\u2013\u2014]?\s*\bSR[-.\s]?\s?[A-Za-z0-9]+\b/gi,""); // series e.g. SR-XXV, SR.181
+      t=t.replace(/\s*[-\u2013\u2014]?\s*\bTR[-\s]?\d+\b/gi,"");            // tranche e.g. TR-1
+      t=t.replace(/\s*\bOP\s+[IVX]+\b/gi,"");                              // option e.g. OP I
+      t=t.replace(/\s*[-\u2013\u2014]?\s*\d+(?:\.\d+)?\s*%+/g,"");          // coupon anywhere, incl. a doubled "%%"
+      t=t.replace(/\s*[-\u2013\u2014]\s*\d+\s*D\b/gi,"");                    // tenor e.g. -362D
+      t=t.replace(/\s+(?:PERP|PERPETUAL|CALL|BD|TIER\s*[\dIV]+)\b/gi,"");
+      t=t.trim();
+      if(t===_b) break;
+    }
+    /* Trailing spaces, dashes and commas only — never the full stop, which
+       belongs to "Ltd." and whose removal would mint a second issuer. */
+    t=t.replace(/[\s\u2013\u2014,\-]+$/,"").replace(/\(\s*\)/g,"").replace(/\s{2,}/g," ").trim();
     if(!t) return raw;
-    if(t===t.toUpperCase()){ t=t.toLowerCase().replace(/\b([a-z])/g,function(m,c){return c.toUpperCase();}).replace(/\bLtd\b/i,"Ltd").replace(/\bLimited\b/i,"Limited"); }
+    if(t===t.toUpperCase() && /[A-Z]/.test(t)){ t=t.toLowerCase().replace(/\b([a-z])/g,function(m,c){return c.toUpperCase();}).replace(/\bLtd\b/i,"Ltd").replace(/\bLimited\b/i,"Limited"); }
     return t;
   }
   function r4(x){ return Math.round(x*1e4)/1e4; }
