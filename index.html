@@ -3353,6 +3353,8 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       var asset=clean(r[9]); if(assetFilter && asset!==assetFilter) continue;
       var hold=num(r[3]); if(hold==null||hold<=0) continue;
       var company=clean(r[1]), sector=clean(r[8])||"Others", mcap=clean(r[18])||"Others";
+      /* cash belongs in Others whatever the source says its market cap is */
+      if(isCash(company)) mcap="Others";
       var d=out[scheme]||(out[scheme]={mcap:{},sector:{},stocks:[],total:0});
       d.mcap[mcap]=(d.mcap[mcap]||0)+hold;
       if (!isCash(company)){
@@ -3533,6 +3535,8 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       hold*=scale;
       var sector=clean(r[5])||"Others";
       var mcap=clean(r[7])||"Others";
+      /* cash belongs in Others whatever the source says its market cap is */
+      if(isCash(company)) mcap="Others";
       var d=out[scheme]||(out[scheme]={mcap:{},sector:{},stocks:[],total:0});
       d.mcap[mcap]=(d.mcap[mcap]||0)+hold;
       if(!isCash(company)){
