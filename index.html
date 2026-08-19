@@ -8266,6 +8266,17 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
   }
 
   /* ======== renderCVS (Current vs Sample Portfolio) ======== */
+  /* Which of the two CVS actions was last applied, so the button row can show
+     it. Module-level: Re-seed re-enters renderCVS and would otherwise lose the
+     state it had just set. */
+  var __cvsAction=null;
+  var CVS_BTN_ON ='font-family:Cambria,serif;font-size:12px;background:#BD9568;color:#FFFFFF;border:1px solid #BD9568;border-radius:3px;padding:6px 14px;cursor:pointer;font-weight:bold;';
+  var CVS_BTN_OFF='font-family:Cambria,serif;font-size:12px;background:#FFFFFF;color:#5C3E17;border:1px solid #BD9568;border-radius:3px;padding:6px 14px;cursor:pointer;font-weight:normal;';
+  function paintCvsBtns(){
+    var a=document.getElementById('cvs-reset-btn'), b=document.getElementById('cvs-reseed-btn');
+    if(a){ a.setAttribute('style', __cvsAction==='actual'?CVS_BTN_ON:CVS_BTN_OFF); a.setAttribute('aria-pressed', __cvsAction==='actual'?'true':'false'); }
+    if(b){ b.setAttribute('style', __cvsAction==='reseed'?CVS_BTN_ON:CVS_BTN_OFF); b.setAttribute('aria-pressed', __cvsAction==='reseed'?'true':'false'); }
+  }
   function renderCVS(){
     var s=document.getElementById('s-cvs');
     if(!s) return;
@@ -8597,8 +8608,8 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
           '<label style="font-weight:bold">Portfolio CMV (₹ Cr):</label>'+
           '<input id="cvs-cmv-inp" type="number" value="'+storedCMV.toFixed(2)+'" min="0" step="1" style="width:110px;font-family:Cambria,serif;font-size:13px;border:1px solid #BD9568;border-radius:3px;padding:4px 8px;">'+
         '</div>'+
-        '<button id="cvs-reset-btn" type="button" style="font-family:Cambria,serif;font-size:12px;background:#BD9568;color:#fff;border:none;border-radius:3px;padding:6px 14px;cursor:pointer;">Reset to Actual</button>'+
-        '<button id="cvs-reseed-btn" type="button" title="Discard hand-typed Sample Portfolio values and take them from the rebalancing plan again" style="font-family:Cambria,serif;font-size:12px;background:#fff;color:#5C3E17;border:1px solid #BD9568;border-radius:3px;padding:6px 14px;cursor:pointer;">Re-seed from rebalancing plan</button>'+
+        '<button id="cvs-reset-btn" type="button" title="Restore the Current Portfolio column to the allocations derived from the base file" style="'+(__cvsAction==="actual"?CVS_BTN_ON:CVS_BTN_OFF)+'">Reset to Actual</button>'+
+        '<button id="cvs-reseed-btn" type="button" title="Discard hand-typed Sample Portfolio values and take them from the rebalancing plan again" style="'+(__cvsAction==="reseed"?CVS_BTN_ON:CVS_BTN_OFF)+'">Re-seed from rebalancing plan</button>'+
         '<div style="display:flex;align-items:center;gap:8px;font-family:Cambria,serif;font-size:13px;">'+
           '<label style="font-weight:bold">Inflation (%):</label>'+
           '<input id="cvs-infl-inp" type="number" value="'+storedInfl.toFixed(1)+'" min="0" step="0.5" max="20" style="width:70px;font-family:Cambria,serif;font-size:13px;border:1px solid #BD9568;border-radius:3px;padding:4px 8px;">'+
@@ -8616,6 +8627,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
       '</div>';
 
     snapCVS(storedCMV,storedInfl);
+    paintCvsBtns();
     document.getElementById('cvs-cmv-inp').onchange=rebuildCVS;
     document.getElementById('cvs-infl-inp').onchange=rebuildCVS;
     (function(){
@@ -8624,7 +8636,8 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
         /* clearing the edited set is the whole action — renderCVS re-seeds
            every row that is no longer held back */
         try{ window.__cvsEdited={}; }catch(e){}
-        renderCVS();
+        __cvsAction='reseed';
+        renderCVS();   /* repaints the buttons from __cvsAction on the way out */
       };
     })();
     (function(){
@@ -8633,7 +8646,10 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
         cvsGroups.forEach(function(g,gi){ g.rows.forEach(function(r,ri){ r.currAlloc=(_cvsActuals[gi]&&_cvsActuals[gi][ri])||0; }); });
         var c=document.getElementById('cvs-cmv-inp'); if(c) c.value=actualCMV.toFixed(2);
         try{ if(typeof localStorage!=='undefined'){ localStorage.removeItem('cvs_cmv'); localStorage.removeItem('cvs_cmv_sig'); } }catch(e){}
+        __cvsAction='actual';
         rebuildCVS();
+        /* rebuildCVS only redraws the table, so the button row is repainted here */
+        paintCvsBtns();
       };
     })();
     wireInputs();
