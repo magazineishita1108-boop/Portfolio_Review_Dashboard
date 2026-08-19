@@ -5771,7 +5771,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
         +'<td class="n">—</td><td class="n">—</td>'
         +ucell('beta')+ucell('sd')+ucell('alpha')+ucell('sortino')+ucell('sharpe')
         +ucell('corr')+ucell('ir')+ucell('dc')+ucell('r3y',true)
-        +'<td style="font-size:10px;color:#5C3E17;font-style:italic;">Avg over funds reporting each metric'+(isN(uni.r3y)&&uni.r3y_n!=null?' · 3Y Rolling from '+uni.r3y_n+' of '+uCnt:'')+' · Risk Ratios file</td>'
+        +'<td></td>'   /* Rationale is for fund rows; the qualifier is in the footnote under the table */
         +'</tr>';
 
       /* Benchmark rows — SD, Sortino and Sharpe on the same locked basis as the
@@ -5791,7 +5791,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
              alpha is 0, correlation is 1, and IR is 0/0, undefined. */
           +'<td class="n">1.00</td>'+_bv(bm.sd,2)+_d+_bv(bm.sortino,2)+_bv(bm.sharpe,2)+_d+_d+'<td class="n">100.00</td>'
           +(isN(bm.r3y)?'<td class="n">'+pv(bm.r3y)+'</td>':_d)
-          +'<td style="font-size:10px;color:#555;">Index, before costs — not investable at zero cost. Beta 1.00 and Down Capture 100.00% are definitional against itself, not measured.</td>'
+          +'<td></td>'   /* see the footnote under the table */
           +'</tr>';
       });
 
@@ -5834,6 +5834,18 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
           +'</tr>';
       });
       html_out+='</tbody></table>';
+      /* What the two summary rows used to say in their Rationale cell, on one
+         line with room for it. Both are disclosures rather than commentary:
+         the universe average is over the funds reporting each metric, not the
+         whole category; and an index carries no expense ratio, so its
+         risk-adjusted figures are flattered against a fund's by roughly
+         TER / volatility before any skill is involved. */
+      (function(){
+        var bits=[];
+        bits.push('Universe Avg is the mean over the funds reporting each metric, not all '+uCnt+(isN(uni.r3y)&&uni.r3y_n!=null?' — 3Y Rolling from '+uni.r3y_n+' of '+uCnt:'')+'.');
+        if(bmKeys.length) bits.push('Benchmark rows are index series before costs and are not investable at zero cost; their Beta 1.00 and Down Capture 100.00% are definitional against the index itself, not measured.');
+        html_out+='<div style="font-family:Cambria,serif;font-size:10.5px;color:#5C3E17;font-style:italic;margin:4px 2px 14px;">'+bits.join(' ')+'</div>';
+      })();
     });
 
     html_out+='</div></div>';
