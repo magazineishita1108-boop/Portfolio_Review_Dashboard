@@ -586,18 +586,36 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       for (var _ai=0;_ai<candidates.length;_ai++){ if(candidates[_ai]===_av) return _av; }
     }
     var amcTok = (normalize(amc)[0]||"");
+    /* An exact name beats any score. Checked before the AMC filter and before
+       any token counting: if the normalised names are identical it is the same
+       scheme, and no threshold should be able to reject it. This cannot create
+       a false positive, and it repairs short names that never reached three
+       tokens — 53 of 400 real PMS-style names previously failed to match
+       themselves. */
+    for (var _e=0;_e<candidates.length;_e++){
+      var _ec = candidates[_e];
+      var _et = candNormCache ? candNormCache[_ec] : normalize(_ec);
+      if (!_et){ _et = normalize(_ec); if(candNormCache) candNormCache[_ec]=_et; }
+      if (_et.join(" ")===_ak) return _ec;
+    }
     var best=null, bestShared=0, bestJac=0;
     for (var i=0;i<candidates.length;i++){
       var c = candidates[i];
       var ct = candNormCache ? candNormCache[c] : normalize(c);
       if (!ct){ ct = normalize(c); if(candNormCache) candNormCache[c]=ct; }
       if (amcTok){ var has=false; for(var j=0;j<ct.length;j++){ if(ct[j]===amcTok){has=true;break;} } if(!has) continue; }
-      var shared=0, distinct=0, ctset=tokenSet(ct), uni={};
-      for (var k=0;k<nt.length;k++){ uni[nt[k]]=1; if(ctset[nt[k]]){ shared++; if(nt[k]!==amcTok && nt[k]!=="fund") distinct++; } }
+      /* sharedSig counts only tokens of >=2 characters. A single letter is not
+         evidence that two funds are the same: "BLUME ... (AIF CATEGORY I)" and
+         "Vedartha India Opportunities Fund I" shared exactly "opp", "fund" and
+         "i", hit the >=3 threshold, and put Vedartha's returns under Blume's
+         name on a client sheet. `shared` keeps the full count so the
+         containment test below is unchanged. */
+      var shared=0, sharedSig=0, distinct=0, ctset=tokenSet(ct), uni={};
+      for (var k=0;k<nt.length;k++){ uni[nt[k]]=1; if(ctset[nt[k]]){ shared++; if(nt[k].length>=2) sharedSig++; if(nt[k]!==amcTok && nt[k]!=="fund") distinct++; } }
       for (var mm=0;mm<ct.length;mm++){ uni[ct[mm]]=1; }
       var minLen=Math.min(nt.length,ct.length);
-      // accept >=3 shared, OR a fully-contained shorter name sharing >=1 distinctive (non-AMC, non-"fund") token
-      if (!((shared>=3) || (shared>=2 && shared===minLen && distinct>=1))) continue;
+      // accept >=3 shared SIGNIFICANT tokens, OR a fully-contained shorter name sharing >=1 distinctive (non-AMC, non-"fund") token
+      if (!((sharedSig>=3) || (shared>=2 && shared===minLen && distinct>=1))) continue;
       var jac = shared/Object.keys(uni).length;
       if (shared>bestShared || (shared===bestShared && jac>bestJac)){ best=c; bestShared=shared; bestJac=jac; }
     }
