@@ -1243,13 +1243,28 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
 
     /* ---- OVERLAP MATRIX (MF + hybrid equity sleeves + PMS w/ stock data; ALL stored holdings, name-normalised, ACTUAL reported weights, Σ min) ---- */
     var ovFunds=[]; var seenOv={};
+    /* key -> entry, so a scheme that folds in from another client or
+       distributor can add its holder rather than be discarded. */
+    var ovByKey={};
     rows.forEach(function(h){
       if (/\bfofs?\b|fund of funds?/i.test((h.name||"")+" "+(h.category||""))) return;  // FOFs excluded (no direct stock holdings)
       if (isCommodity(h)) return;  // pure commodity funds (gold/silver) excluded per spec
       var key=h.eqKey||(h.hyKey&&HY[h.hyKey]&&HY[h.hyKey].eq?h.hyKey:null);
       if(!key) return;
       var label=h.name;
-      if (seenOv[key]) return; seenOv[key]=1;
+      /* A fund maps to a SET of clients and a SET of distributors: the same
+         scheme held by two clients collapses to one matrix entry, but both
+         holders must still select it. */
+      var _ovCl=ws(h.client)||"\u2014", _ovDs=ws(h.distributor)||"\u2014";
+      if (seenOv[key]){
+        var _prev=ovByKey[key];
+        if(_prev){
+          if(_prev.clients.indexOf(_ovCl)<0) _prev.clients.push(_ovCl);
+          if(_prev.distributors.indexOf(_ovDs)<0) _prev.distributors.push(_ovDs);
+        }
+        return;
+      }
+      seenOv[key]=1;
       var stocks = h.eqKey?EQ[h.eqKey].stocks:(HY[h.hyKey].eq?HY[h.hyKey].eq.stocks:[]);
       // Weight map keyed by NORMALISED company name (different AMC spellings of the same stock match),
       // summing collisions, over ALL the fund's stored holdings, using EACH STOCK'S ACTUAL reported
@@ -1259,9 +1274,11 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       var OV_CASH=/treps|tri.?party\s*repo|cblo|ccil|net\s*receivable|reverse\s*repo|liquid\s*bees|overnight/i;
       var wmap={};
       stocks.forEach(function(s){ var nm=normCo(s[0]); if(!nm) return; var sn=String(s[0]||""); if(OV_CASH.test(sn)||/^cash\b/i.test(sn.trim())||/\brepo\b/i.test(sn)) return; var w=+s[1]||0; if(w<=0) return; wmap[nm]=(wmap[nm]||0)+w; });
-      ovFunds.push({key:key,label:label,w:wmap,asset:h.asset||"",product:h.product||"",category:h.category||""});
+      var _ovEntry={key:key,label:label,w:wmap,asset:h.asset||"",product:h.product||"",category:h.category||"",clients:[_ovCl],distributors:[_ovDs]};
+      ovByKey[key]=_ovEntry;
+      ovFunds.push(_ovEntry);
     });
-    var overlap={eligible: ovFunds.length>=2, funds: ovFunds.map(function(f){return f.label;}), meta: ovFunds.map(function(f){return {label:f.label,asset:f.asset,product:f.product,category:f.category};}), matrix:[]};
+    var overlap={eligible: ovFunds.length>=2, funds: ovFunds.map(function(f){return f.label;}), meta: ovFunds.map(function(f){return {label:f.label,asset:f.asset,product:f.product,category:f.category,clients:(f.clients||[]).slice(),distributors:(f.distributors||[]).slice()};}), matrix:[]};
     for (var i2=0;i2<ovFunds.length;i2++){
       var rrow=[];
       for (var j2=0;j2<ovFunds.length;j2++){
@@ -4454,12 +4471,12 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
     if(!st.sel || st.sel.length!==ov.funds.length) st.sel=ov.funds.map(function(){return true;});
     var checks=ov.funds.map(function(f,i){return '<label><input type="checkbox" data-i="'+i+'" '+(st.sel[i]?'checked':'')+'> '+(i+1)+'. '+f+'</label>';}).join('');
     s.innerHTML='<div class="card"><h3>'+title+'</h3>'+
-      '<div class="sub">Overlap = Σ min(weight A, weight B) across stocks held in both funds (pairs ≥99.50% shown as a full 100% match). Analytics as on '+model.meta.dataDates.analytics+'.'+(subNote||'')+'</div>'+
+      '<div class="sub">Overlap = Σ min(weight A, weight B) across stocks held in both funds (pairs ≥99.50% shown as a full 100% match). Analytics as on '+model.meta.dataDates.analytics+'.'+(subNote||'')+' Filtering by Client or Distributor selects the funds that holder owns any part of; the percentages remain whole-portfolio scheme weights and are not re-based to that holder.</div>'+
       '<div class="ovpanel">'+
         '<div class="ovtop"><button class="btn" data-ovc="img">⬇ Download overlap as PNG</button>'+
           '<label>Show only pairs ≥ <b data-ovc="thval">'+st.th+'</b>% <input type="range" data-ovc="th" class="ovslider" min="0" max="100" value="'+st.th+'" step="1"></label>'+
           '<span class="ovcount" data-ovc="count"></span></div>'+
-        '<div class="ovgrp" style="margin:4px 0 10px;font-size:13px"><b>Quick select by:</b> '+'<button class="ggdim" data-d="asset" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">Asset Class</button>'+'<button class="ggdim" data-d="product" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">Product Class</button>'+'<button class="ggdim" data-d="category" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">Category</button>'+'<button class="ggdim" data-d="all" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">All funds</button>'+'<div data-ovc="chips" style="margin-top:8px"></div></div>'+'<div class="pickrow"><b>Eligible funds</b> &nbsp;(tick to include / untick to exclude):<br>'+checks+'</div>'+
+        '<div class="ovgrp" style="margin:4px 0 10px;font-size:13px"><b>Quick select by:</b> '+'<button class="ggdim" data-d="asset" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">Asset Class</button>'+'<button class="ggdim" data-d="product" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">Product Class</button>'+'<button class="ggdim" data-d="category" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">Category</button>'+'<button class="ggdim" data-d="client" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">Client</button>'+'<button class="ggdim" data-d="dist" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">Distributor</button>'+'<button class="ggdim" data-d="all" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">All funds</button>'+'<div data-ovc="chips" style="margin-top:8px"></div></div>'+'<div class="pickrow"><b>Eligible funds</b> &nbsp;(tick to include / untick to exclude):<br>'+checks+'</div>'+
         '<div class="ovx-wrap" data-ovc="wrap"></div>'+
         '<div class="ovlegend" style="margin-top:14px;">'+
           '<span><span class="sw" style="background:#B98C5A"></span>Diagonal (100%)</span>'+
@@ -4478,14 +4495,21 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
     (function(){
       var chipWrap=s.querySelector('[data-ovc="chips"]'), meta=ov.meta||[];
       function syncChecks(){ s.querySelectorAll('.pickrow input[type=checkbox]').forEach(function(cb){ cb.checked=!!st.sel[+cb.dataset.i]; }); }
-      function valOf(x,dim){ return ((x[dim]||'')+'').trim()||'—'; }
-      function distinct(dim){ var mm={},o=[]; meta.forEach(function(x){ var v=valOf(x,dim); if(!mm[v]){mm[v]=1;o.push(v);} }); return o.sort(); }
+      /* Client and Distributor are set-valued — one scheme can be held by
+         several of each — so every dimension is read as a list. */
+      function valsOf(x,dim){
+        var v=(dim==='client')?x.clients:(dim==='dist')?x.distributors:x[dim];
+        if(Object.prototype.toString.call(v)==='[object Array]') return v.length?v.slice():['—'];
+        var s=((v||'')+'').trim(); return [s||'—'];
+      }
+      function distinct(dim){ var mm={},o=[]; meta.forEach(function(x){ valsOf(x,dim).forEach(function(v){ if(!mm[v]){mm[v]=1;o.push(v);} }); }); return o.sort(); }
       function showChips(dim){
         if(dim==='all'){ st.sel=ov.funds.map(function(){return true;}); syncChecks(); redraw(); chipWrap.innerHTML=''; return; }
         var vals=distinct(dim), chosen={};
         function applySel(){ var keys=[]; for(var k in chosen){ if(chosen[k]) keys.push(k); }
           if(!keys.length){ st.sel=ov.funds.map(function(){return true;}); }
-          else { st.sel=meta.map(function(x){ return keys.indexOf(valOf(x,dim))>=0; }); }
+          /* a fund is selected if ANY of its holders is ticked */
+          else { st.sel=meta.map(function(x){ var vs=valsOf(x,dim); return keys.some(function(k){ return vs.indexOf(k)>=0; }); }); }
           syncChecks(); redraw(); }
         function paint(){ chipWrap.querySelectorAll('.ovchip').forEach(function(z){ var on=!!chosen[vals[+z.dataset.ix]]; z.style.background=on?'#BD9568':'#fff'; z.style.color=on?'#fff':'#000'; }); }
         chipWrap.innerHTML="<span style='color:#777;font-size:11px'>tick one or more segments — funds in any ticked segment are included: </span>"+vals.map(function(v,ix){ return "<button class='ovchip' data-ix='"+ix+"' style='margin:2px;padding:3px 11px;border:1px solid #BD9568;border-radius:12px;background:#fff;cursor:pointer;font-family:Cambria;font-size:12px'>"+v+"</button>"; }).join("")+" <button id='ovClr' style='margin:2px;padding:3px 11px;border:1px dashed #999;border-radius:12px;background:#fff;cursor:pointer;font-family:Cambria;font-size:12px;color:#555'>Clear</button>";
