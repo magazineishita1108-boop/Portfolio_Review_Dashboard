@@ -2283,7 +2283,7 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
         {x:tx,y:4.18,w:11.30,colW:colW,rowH:0.34,fontFace:F,fontSize:9.5,valign:'middle',border:{type:'solid',color:C.greyL,pt:0.75}});
       foot(sx,'*Holdings ranked by sum-weighted contribution (Contribution = % Allocation × Fund XIRR). '+(model.irrActive?('Transaction-based XIRR as on '+(model.irrAsOn||'—')+'.'):'XIRR from the base file.')+' Portfolio as on '+model.meta.asOnDate+'.');
     })();
-    if(SHOW_ANY(['cvs','mfanalysis','rebal','rebalhold','postan','rbimpact'])) sectionDivider('rebal');
+    if(SHOW_ANY(['cvs','mfanalysis','rebal','rebalhold','postan','rbovlp','rbimpact'])) sectionDivider('rebal');
 
     if(SHOW('cvs'))(function(){
       var s=base('CURRENT VS SAMPLE PORTFOLIO');
@@ -2837,6 +2837,23 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
     })();
 
     /* ── Rebalancing Impact (current vs post) ──────────────────────────────── */
+    /* Post-rebalancing overlap. rbPostAnalytics() already carries .overlap, so
+       nothing is recomputed; the raster is the same overlapCanvas() the
+       current-portfolio slide uses, driven by the post-rebalancing selection. */
+    if(SHOW('rbovlp')) (function __rbOverlapSlide(){
+      try{
+        var _pm=(typeof rbPostAnalytics==='function')?rbPostAnalytics():null;
+        var _pov=_pm&&_pm.overlap;
+        if(!_pov||!_pov.eligible) return;
+        if(typeof ovThPost==='undefined'||ovThPost==null) ovThPost=0;
+        if(typeof ovSelPost==='undefined'||!ovSelPost||ovSelPost.length!==_pov.funds.length) ovSelPost=_pov.funds.map(function(){return true;});
+        var _so=base('Post-Rebalancing Overlap Matrix \u2014 Mutual Funds / PMS');
+        var _cv=overlapCanvas(_pov,ovSelPost,ovThPost);
+        if(_cv){ var iw=_cv.width/96, ih=_cv.height/96, mw=12.6, mh=5.55, sc=Math.min(mw/iw, mh/ih, 1.6), dw=iw*sc, dh=ih*sc; _so.addImage({data:_cv.toDataURL('image/png'),x:(W-dw)/2,y:1.05,w:dw,h:dh}); }
+        _so.addText('Built on the rebalanced holdings. Overlap = \u03a3 min(weight A, weight B) across stocks held in both funds; weights are whole-portfolio scheme weights, on the same basis as the pre-rebalancing matrix. Analytics as on '+model.meta.dataDates.analytics+'.',
+          {x:0.18,y:6.72,w:12.95,h:0.30,fontFace:F,fontSize:8,italic:true,color:'555555'});
+      }catch(e){}
+    })();
     if(SHOW('rbimpact')) (function __rbImpactSlides(){
       var RB = (typeof window!=='undefined') ? window.__REBAL_DATA : null;
       var P  = RB && RB.impact;
@@ -3979,7 +3996,8 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
   var EXTRA_SLIDES=[
     {after:'rebal', k:'rebalhold',    l:'Rebalancing Holding Sheet',        to:'rebal'},
     {after:'rebalhold', k:'postan',   l:'Post-Rebalancing Analytics',       to:'analytics'},
-    {after:'postan', k:'rbimpact',    l:'Rebalancing Impact',               to:'analytics'},
+    {after:'postan', k:'rbovlp',      l:'Post-Rebalancing Overlap Matrix', to:'analytics'},
+    {after:'rbovlp', k:'rbimpact',    l:'Rebalancing Impact',               to:'analytics'},
     {after:'perf',  k:'proposedperf', l:'Performance — Proposed Funds',     to:'rebal'}
   ];
   /* ticked slide keys. Empty means "the analyst has not chosen", which is
@@ -4356,9 +4374,26 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
         '<div style="font-size:11px;color:#666;margin-top:2px;">Equity &amp; Debt look-through reflects '+(anScope?('<b>'+_esc(anScope)+'</b> only'):'<b>all clients (family level)</b>')+'. Other tabs &amp; exports remain at family level.</div></div>';
     }
     var _postRb=''; try{ _postRb=rbPostAnalyticsHTML(); }catch(e){ console.warn('post-rebal analytics render failed:',e); }
-    s.innerHTML=dlBar('analytics')+_scopeBar+html+_postRb;
+    /* Host for the post-rebalancing overlap matrix, directly under the
+       post-rebalancing analytics block. Only emitted when that block is. */
+    var _postOvHost=_postRb?'<div id="s-overlap-post"></div>':'';
+    s.innerHTML=dlBar('analytics')+_scopeBar+html+_postRb+_postOvHost;
     /* the mirror's canvases only exist once the markup is in the DOM */
     if(_postRb){ try{ rbDrawCharts(rbPostAnalytics()); }catch(e){ console.warn('post-rebal charts failed:',e); } }
+    /* Post-rebalancing overlap. rbPostAnalytics() already carries .overlap —
+       computeReview builds it alongside the analytics — so this renders the
+       matrix that already exists rather than computing a second one. */
+    if(_postRb){
+      try{
+        var _pm=rbPostAnalytics();
+        var _ph=document.getElementById('s-overlap-post');
+        if(_ph && _pm && _pm.overlap){
+          renderOverlapPanel(_ph, _pm.overlap, OVST_POST,
+            'Post-Rebalancing Overlap Matrix — Mutual Funds / PMS',
+            ' Built on the rebalanced holdings; weights are whole-portfolio scheme weights, on the same basis as the pre-rebalancing matrix.');
+        }
+      }catch(e){ console.warn('post-rebal overlap failed:',e); }
+    }
     rbWireDl(s);
     Array.prototype.forEach.call(s.querySelectorAll('.asbtn'),function(b){ b.onclick=function(){ anScope=b.dataset.sc||null; renderAnalytics(); }; });
     if(ea.hasData){
@@ -4378,17 +4413,26 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
 
   function ovColH(v,d){ if(d)return '#B98C5A'; if(v<15)return '#F2E9DC'; if(v<30)return '#DCC4A5'; if(v<50)return '#C49A66'; return '#A87B45'; }
   function ovTxtH(v,d){ if(d||v>=30)return '#5C3E17'; return '#1A1A1A'; }
+  /* Current-portfolio selection. Kept as plain vars because the PPTX overlap
+     slide and both overlapView builders read them directly. */
   var ovSel=null, ovTh=0;
-  function ovSelectedIdx(){ var a=[]; if(ovSel)ovSel.forEach(function(b,i){ if(b)a.push(i); }); return a; }
+  /* Post-rebalancing selection — a separate pair, so ticking a fund on one
+     panel cannot repaint the other's matrix. */
+  var ovSelPost=null, ovThPost=0;
+  var OVST_CUR ={ get sel(){return ovSel;},     set sel(v){ovSel=v;},     get th(){return ovTh;},     set th(v){ovTh=v;} };
+  var OVST_POST={ get sel(){return ovSelPost;}, set sel(v){ovSelPost=v;}, get th(){return ovThPost;}, set th(v){ovThPost=v;} };
+  function ovSelectedIdx(sel){ var s=(sel===undefined?ovSel:sel); var a=[]; if(s)s.forEach(function(b,i){ if(b)a.push(i); }); return a; }
   // funds shown = checkbox-selected funds that have at least one off-diagonal pair >= threshold
-  function ovDisplayIdx(ov){
-    var sel=ovSelectedIdx();
-    if(ovTh<=0) return sel;
-    return sel.filter(function(i){ return sel.some(function(j){ return j!==i && ov.matrix[i][j]>=ovTh; }); });
+  function ovDisplayIdx(ov,selArr,thVal){
+    var sel=ovSelectedIdx(selArr===undefined?ovSel:selArr);
+    var th=(thVal===undefined?ovTh:thVal);
+    if(th<=0) return sel;
+    return sel.filter(function(i){ return sel.some(function(j){ return j!==i && ov.matrix[i][j]>=th; }); });
   }
-  function buildOvMatrix(ov){
-    var idx=ovDisplayIdx(ov), k=idx.length;
-    if(k<2) return '<div class="empty" style="color:#DBC8B2;">No funds have an overlap pair ≥ '+ovTh+'% — lower the threshold or select more funds.</div>';
+  function buildOvMatrix(ov,selArr,thVal){
+    var _th=(thVal===undefined?ovTh:thVal);
+    var idx=ovDisplayIdx(ov,selArr,thVal), k=idx.length;
+    if(k<2) return '<div class="empty" style="color:#DBC8B2;">No funds have an overlap pair ≥ '+_th+'% — lower the threshold or select more funds.</div>';
     var head='<th></th>'+idx.map(function(_,c){return '<th>'+(c+1)+'</th>';}).join('')+'<th></th>';
     var body=idx.map(function(ri,r){
       var cells=idx.map(function(ci,c){
@@ -4399,19 +4443,24 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
     }).join('');
     return '<table class="ovx"><tr>'+head+'</tr>'+body+'</table>';
   }
-  function renderOverlap(){
-    var s=document.getElementById('s-overlap'); var ov=model.overlap;
-    if(!ov.eligible){ s.innerHTML='<div class="card"><div class="empty">Overlap matrix needs at least 2 funds with stock-level reference data.</div></div>'; return; }
-    if(!ovSel || ovSel.length!==ov.funds.length) ovSel=ov.funds.map(function(){return true;});
-    var checks=ov.funds.map(function(f,i){return '<label><input type="checkbox" data-i="'+i+'" '+(ovSel[i]?'checked':'')+'> '+(i+1)+'. '+f+'</label>';}).join('');
-    s.innerHTML='<div class="card"><h3>Overlap Matrix — Mutual Funds / PMS</h3>'+
-      '<div class="sub">Overlap = Σ min(weight A, weight B) across stocks held in both funds (pairs ≥99.50% shown as a full 100% match). Analytics as on '+model.meta.dataDates.analytics+'.</div>'+
+  /* One panel, rendered for whichever portfolio it is handed. `st` is a
+     getter/setter pair over the module-level selection so the two views cannot
+     share checkbox state. Lookups are scoped to `host` — the markup carries
+     data-ovc attributes rather than ids, because two panels with the same ids
+     would leave document.getElementById returning the first one. */
+  function renderOverlapPanel(host, ov, st, title, subNote){
+    var s=host;
+    if(!ov || !ov.eligible){ s.innerHTML='<div class="card"><div class="empty">Overlap matrix needs at least 2 funds with stock-level reference data.</div></div>'; return; }
+    if(!st.sel || st.sel.length!==ov.funds.length) st.sel=ov.funds.map(function(){return true;});
+    var checks=ov.funds.map(function(f,i){return '<label><input type="checkbox" data-i="'+i+'" '+(st.sel[i]?'checked':'')+'> '+(i+1)+'. '+f+'</label>';}).join('');
+    s.innerHTML='<div class="card"><h3>'+title+'</h3>'+
+      '<div class="sub">Overlap = Σ min(weight A, weight B) across stocks held in both funds (pairs ≥99.50% shown as a full 100% match). Analytics as on '+model.meta.dataDates.analytics+'.'+(subNote||'')+'</div>'+
       '<div class="ovpanel">'+
-        '<div class="ovtop"><button class="btn" id="ovImg">⬇ Download overlap as PNG</button>'+
-          '<label>Show only pairs ≥ <b id="ovThVal">0</b>% <input type="range" id="ovTh" class="ovslider" min="0" max="100" value="0" step="1"></label>'+
-          '<span class="ovcount" id="ovCount"></span></div>'+
-        '<div class="ovgrp" style="margin:4px 0 10px;font-size:13px"><b>Quick select by:</b> '+'<button class="ggdim" data-d="asset" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">Asset Class</button>'+'<button class="ggdim" data-d="product" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">Product Class</button>'+'<button class="ggdim" data-d="category" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">Category</button>'+'<button class="ggdim" data-d="all" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">All funds</button>'+'<div id="ovChips" style="margin-top:8px"></div></div>'+'<div class="pickrow"><b>Eligible funds</b> &nbsp;(tick to include / untick to exclude):<br>'+checks+'</div>'+
-        '<div class="ovx-wrap" id="ovWrap"></div>'+
+        '<div class="ovtop"><button class="btn" data-ovc="img">⬇ Download overlap as PNG</button>'+
+          '<label>Show only pairs ≥ <b data-ovc="thval">'+st.th+'</b>% <input type="range" data-ovc="th" class="ovslider" min="0" max="100" value="'+st.th+'" step="1"></label>'+
+          '<span class="ovcount" data-ovc="count"></span></div>'+
+        '<div class="ovgrp" style="margin:4px 0 10px;font-size:13px"><b>Quick select by:</b> '+'<button class="ggdim" data-d="asset" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">Asset Class</button>'+'<button class="ggdim" data-d="product" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">Product Class</button>'+'<button class="ggdim" data-d="category" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">Category</button>'+'<button class="ggdim" data-d="all" style="margin:0 3px;padding:4px 11px;border:1px solid #BD9568;border-radius:4px;background:#fff;cursor:pointer;font-family:Cambria">All funds</button>'+'<div data-ovc="chips" style="margin-top:8px"></div></div>'+'<div class="pickrow"><b>Eligible funds</b> &nbsp;(tick to include / untick to exclude):<br>'+checks+'</div>'+
+        '<div class="ovx-wrap" data-ovc="wrap"></div>'+
         '<div class="ovlegend" style="margin-top:14px;">'+
           '<span><span class="sw" style="background:#B98C5A"></span>Diagonal (100%)</span>'+
           '<span><span class="sw" style="background:#F2E9DC"></span>&lt; 15% low</span>'+
@@ -4419,36 +4468,41 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
           '<span><span class="sw" style="background:#C49A66"></span>30–50% high</span>'+
           '<span><span class="sw" style="background:#A87B45"></span>&gt; 50% very high</span></div>'+
       '</div></div>';
-    var thEl=document.getElementById('ovTh'), thVal=document.getElementById('ovThVal');
-    function redraw(){ ovTh=+thEl.value; thVal.textContent=ovTh; document.getElementById('ovWrap').innerHTML=buildOvMatrix(ov);
-      document.getElementById('ovCount').textContent=ovDisplayIdx(ov).length+' funds shown · '+ovSelectedIdx().length+' of '+ov.funds.length+' eligible selected'; }
+    var thEl=s.querySelector('[data-ovc="th"]'), thVal=s.querySelector('[data-ovc="thval"]');
+    function redraw(){ st.th=+thEl.value; thVal.textContent=st.th; s.querySelector('[data-ovc="wrap"]').innerHTML=buildOvMatrix(ov,st.sel,st.th);
+      s.querySelector('[data-ovc="count"]').textContent=ovDisplayIdx(ov,st.sel,st.th).length+' funds shown · '+ovSelectedIdx(st.sel).length+' of '+ov.funds.length+' eligible selected'; }
     thEl.addEventListener('input',redraw);
-    s.querySelectorAll('.pickrow input[type=checkbox]').forEach(function(cb){ cb.addEventListener('change',function(){ ovSel[+cb.dataset.i]=cb.checked; redraw(); }); });
-    document.getElementById('ovImg').onclick=function(){ downloadOvImage(ov); };
+    s.querySelectorAll('.pickrow input[type=checkbox]').forEach(function(cb){ cb.addEventListener('change',function(){ st.sel[+cb.dataset.i]=cb.checked; redraw(); }); });
+    s.querySelector('[data-ovc="img"]').onclick=function(){ downloadOvImage(ov,st.sel,st.th,title); };
     // grouping: multi-select funds by asset / product / category (union of ticked segments)
     (function(){
-      var chipWrap=document.getElementById('ovChips'), meta=model.overlap.meta||[];
-      function syncChecks(){ s.querySelectorAll('.pickrow input[type=checkbox]').forEach(function(cb){ cb.checked=!!ovSel[+cb.dataset.i]; }); }
+      var chipWrap=s.querySelector('[data-ovc="chips"]'), meta=ov.meta||[];
+      function syncChecks(){ s.querySelectorAll('.pickrow input[type=checkbox]').forEach(function(cb){ cb.checked=!!st.sel[+cb.dataset.i]; }); }
       function valOf(x,dim){ return ((x[dim]||'')+'').trim()||'—'; }
       function distinct(dim){ var mm={},o=[]; meta.forEach(function(x){ var v=valOf(x,dim); if(!mm[v]){mm[v]=1;o.push(v);} }); return o.sort(); }
       function showChips(dim){
-        if(dim==='all'){ ovSel=ov.funds.map(function(){return true;}); syncChecks(); redraw(); chipWrap.innerHTML=''; return; }
+        if(dim==='all'){ st.sel=ov.funds.map(function(){return true;}); syncChecks(); redraw(); chipWrap.innerHTML=''; return; }
         var vals=distinct(dim), chosen={};
         function applySel(){ var keys=[]; for(var k in chosen){ if(chosen[k]) keys.push(k); }
-          if(!keys.length){ ovSel=ov.funds.map(function(){return true;}); }
-          else { ovSel=meta.map(function(x){ return keys.indexOf(valOf(x,dim))>=0; }); }
+          if(!keys.length){ st.sel=ov.funds.map(function(){return true;}); }
+          else { st.sel=meta.map(function(x){ return keys.indexOf(valOf(x,dim))>=0; }); }
           syncChecks(); redraw(); }
         function paint(){ chipWrap.querySelectorAll('.ovchip').forEach(function(z){ var on=!!chosen[vals[+z.dataset.ix]]; z.style.background=on?'#BD9568':'#fff'; z.style.color=on?'#fff':'#000'; }); }
         chipWrap.innerHTML="<span style='color:#777;font-size:11px'>tick one or more segments — funds in any ticked segment are included: </span>"+vals.map(function(v,ix){ return "<button class='ovchip' data-ix='"+ix+"' style='margin:2px;padding:3px 11px;border:1px solid #BD9568;border-radius:12px;background:#fff;cursor:pointer;font-family:Cambria;font-size:12px'>"+v+"</button>"; }).join("")+" <button id='ovClr' style='margin:2px;padding:3px 11px;border:1px dashed #999;border-radius:12px;background:#fff;cursor:pointer;font-family:Cambria;font-size:12px;color:#555'>Clear</button>";
         chipWrap.querySelectorAll('.ovchip').forEach(function(b){ b.onclick=function(){ var v=vals[+b.dataset.ix]; chosen[v]=!chosen[v]; paint(); applySel(); }; });
         var clr=document.getElementById('ovClr'); if(clr) clr.onclick=function(){ chosen={}; paint(); applySel(); };
       }
-      document.querySelectorAll('.ovgrp .ggdim').forEach(function(b){ b.onclick=function(){ document.querySelectorAll('.ovgrp .ggdim').forEach(function(z){ z.style.background='#fff'; z.style.color='#000'; }); b.style.background='#BD9568'; b.style.color='#fff'; showChips(b.dataset.d); }; });
+      s.querySelectorAll('.ovgrp .ggdim').forEach(function(b){ b.onclick=function(){ s.querySelectorAll('.ovgrp .ggdim').forEach(function(z){ z.style.background='#fff'; z.style.color='#000'; }); b.style.background='#BD9568'; b.style.color='#fff'; showChips(b.dataset.d); }; });
     })();
     redraw();
   }
-  function overlapCanvas(ov){
-    var idx=ovDisplayIdx(ov), k=idx.length; if(k<2){ return null; }
+  /* Current portfolio — unchanged behaviour, now just the first caller. */
+  function renderOverlap(){
+    renderOverlapPanel(document.getElementById('s-overlap'), model.overlap, OVST_CUR,
+      'Overlap Matrix — Mutual Funds / PMS', '');
+  }
+  function overlapCanvas(ov,selArr,thVal){
+    var idx=ovDisplayIdx(ov,selArr,thVal), k=idx.length; if(k<2){ return null; }
     var cell=66, lab=30, pad=20, rowH=30, nameW=360;
     var gridW=nameW+k*cell+lab, gridH=lab+k*rowH;
     var W=pad*2+gridW+8, H=pad+44+gridH+52;
@@ -4480,7 +4534,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
     var lx=pad; lg.forEach(function(p){ x.fillStyle=p[0]; x.fillRect(lx,ly-8,15,15); x.fillStyle='#EDE6DA'; x.fillText(p[1],lx+20,ly); lx+=x.measureText(p[1]).width+52; });
     return cv;
   }
-  function downloadOvImage(ov){ var cv=overlapCanvas(ov); if(!cv){ alert('No funds with overlap >= the current threshold. Lower the slider.'); return; } var a=document.createElement('a'); a.href=cv.toDataURL('image/png'); a.download='Overlap Matrix_'+model.meta.familyName+'_'+model.meta.asOnDate+'.png'; a.click(); }
+  function downloadOvImage(ov,selArr,thVal,tag){ var cv=overlapCanvas(ov,selArr,thVal); if(!cv){ alert('No funds with overlap >= the current threshold. Lower the slider.'); return; } var a=document.createElement('a'); a.href=cv.toDataURL('image/png'); a.download=((tag&&/post/i.test(tag))?'Post-Rebalancing Overlap Matrix_':'Overlap Matrix_')+model.meta.familyName+'_'+model.meta.asOnDate+'.png'; a.click(); }
   /* Drops fund rows with NO real return value across the bucket's columns (unmatched
      instruments or matched-but-blank records), and cascades to drop a category's sub-header
      + benchmark row if zero funds remain under it. Shared by the dashboard Performance tab
