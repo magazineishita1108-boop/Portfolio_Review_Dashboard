@@ -686,8 +686,61 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
     {key:"Direct Equity",cols:["3M","6M","1Y","2Y","3Y","5Y"], mcap:false}
   ];
 
+  /* ---------- Performance sheet: Equity MF display groups ----------
+     Declared order, the SEBI categories each group folds in, and the benchmark
+     row(s) that sit under it. Kept as one table so the ordering is readable
+     next month instead of being spread through the render code.
+
+     Match order matters: 'Large & Mid Cap' must not be caught by the Large Cap
+     or Mid Cap patterns, which is why those two anchor on ^large\s*cap and
+     ^mid\s*cap and the combined one is tested in its own group.
+
+     Contra and Value are separate entries on purpose. CAT_ALIAS in the MF
+     Analysis code collapses 'value' into 'Contra'; that table is not reused
+     here. */
+  var PERF_GROUPS=[
+    {label:'Index Funds',               re:/^(index(\s*fund)?s?(\s*\/\s*etf)?|etf|etfs)$/i,               bench:['Nifty 50 - TRI'],
+     /* only when such a fund is actually held — matched on the instrument
+        name, not the category, since the category is just 'Index' */
+     condBench:[{name:'Nifty Next 50 - TRI', re:/next\s*50|nifty\s*junior/i}]},
+    {label:'Large Cap Funds',           re:/^large\s*cap(\s*fund)?s?$/i,                                   bench:['Nifty 100 - TRI']},
+    {label:'Diversified Funds',         re:/^(large\s*(&|and)\s*mid\s*cap|flexi\s*cap|multi\s*cap|focused)(\s*fund)?s?$/i,
+     bench:['Nifty LargeMidcap 250 - TRI','Nifty 500 Multicap 50:25:25 - TRI','Nifty 500 - TRI']},
+    {label:'Mid Cap Funds',             re:/^mid\s*cap(\s*fund)?s?$/i,                                     bench:['Nifty Midcap 150 - TRI']},
+    {label:'Small Cap Funds',           re:/^small\s*cap(\s*fund)?s?$/i,                                   bench:['Nifty Smallcap 250 - TRI']},
+    {label:'Thematic / Sectoral Funds', re:/thematic|sector/i,                                             bench:['Nifty 500 - TRI']},
+    {label:'ELSS',                      re:/^(elss|tax\s*saver)(\s*fund)?s?$|equity\s*linked\s*savings/i,  bench:['Nifty 500 - TRI']},
+    {label:'Dividend Yield',            re:/dividend\s*yield/i,                                            bench:['Nifty 500 - TRI']},
+    {label:'Contra',                    re:/^contra(\s*fund)?s?$/i,                                        bench:['Nifty 500 - TRI']},
+    {label:'Value',                     re:/^value(\s*fund)?s?$/i,                                         bench:['Nifty 500 - TRI']}
+  ];
   /* ---------- benchmark lookup ---------- */
   function normBench(s){ return String(s||"").toLowerCase().replace(/\btri\b/g,"").replace(/[^a-z0-9]/g,""); }
+  /* Look a benchmark up by its display name. Returns null when the series is
+     absent — the caller footnotes it rather than emitting an empty row. */
+  function benchByName(nm,REF){
+    var BR=(REF&&REF.BENCH_RET)||{}, k=normBench(nm), e=BR[k];
+    return e?{name:e.name||nm, r:e.r||{}}:null;
+  }
+  /* Equity MF categories -> ordered display groups. Anything unmatched keeps
+     its own name and lands at the end in first-seen order; a category is never
+     silently dropped. */
+  function perfGroupsFor(catList,byCat){
+    var used={}, out=[];
+    PERF_GROUPS.forEach(function(g){
+      var cats=catList.filter(function(c){ return !used[c] && g.re.test(String(c||'').trim()); });
+      if(!cats.length) return;
+      cats.forEach(function(c){ used[c]=1; });
+      var bench=(g.bench||[]).slice();
+      (g.condBench||[]).forEach(function(cb){
+        var held=cats.some(function(c){ return (byCat[c]||[]).some(function(h){ return cb.re.test(String(h.name||'')); }); });
+        if(held) bench.push(cb.name);
+      });
+      out.push({label:g.label, cats:cats, bench:bench});
+    });
+    catList.forEach(function(c){ if(!used[c]) out.push({label:c, cats:[c], bench:null}); });
+    return out;
+  }
   function resolveBench(cat,bucket,REF){
     var BR=REF.BENCH_RET||{}, B=REF.BENCHMARKS||{}, cands=[];
     if(B[cat]) cands.push(B[cat]);
@@ -1317,9 +1370,14 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       var byCat={}; var catList=[];
       hs.forEach(function(h){ var c=h.category||"Other"; if(!byCat[c]){byCat[c]=[];catList.push(c);} byCat[c].push(h); });
       var brows=[]; var seen={};
-      catList.forEach(function(cat){
-        brows.push({type:"sub",label:cat});
-        byCat[cat].forEach(function(h){
+      /* Equity MF follows the declared PERF_GROUPS order; every other bucket
+         keeps one block per category, as before. */
+      var _grps=(bd.key==="Equity MF")?perfGroupsFor(catList,byCat)
+                                      :catList.map(function(c){return {label:c,cats:[c],bench:null};});
+      _grps.forEach(function(_g){
+        var cat=_g.cats[0];
+        brows.push({type:"sub",label:_g.label});
+        _g.cats.forEach(function(_c){ byCat[_c].forEach(function(h){
           if (h.directEquity) {
             /* a stock carries no inception, AUM or market-cap split; unmatched ones
                render "-" and are already counted in the unmatched footnote */
@@ -1336,10 +1394,21 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
           var src = h.perfSrc==="PMS"?PMSP[h.perfKey]:(h.perfSrc==="AIF"?AIFP[h.perfKey]:(h.perfSrc==="SIF"?SIFP[h.perfKey]:MFP[h.perfKey]));
           brows.push({type:"fund",name:(h.perfSrc==="PMS"?h.perfKey:h.name),key:h.perfKey,inception:src.inception,aum:src.aum,
             r:src.r||{}, mcap:src.mcap||{}, debt:src.debt||{}});
-        });
-        // benchmark row under sub-category — attach real TRI returns from BENCH_RET (SIF has no TRI benchmark)
+        }); });
+        // benchmark row(s) under the group — real TRI returns from BENCH_RET
+        // (SIF and Direct Equity have no TRI benchmark)
         if (bd.key!=="SIF" && bd.key!=="Direct Equity"){
-          var bm=resolveBench(cat,bd.key,REF); brows.push({type:"bench",label:bm.name, r:bm.r});
+          if(_g.bench&&_g.bench.length){
+            _g.bench.forEach(function(_bn){
+              var b=benchByName(_bn,REF);
+              /* absent series -> nothing, and the missing name is recorded;
+                 an empty benchmark row would read as a zero return */
+              if(b) brows.push({type:"bench",label:b.name, r:b.r});
+              else { try{ (performance.missingBench||(performance.missingBench=[])).push(_bn); }catch(e){} }
+            });
+          } else {
+            var bm=resolveBench(cat,bd.key,REF); brows.push({type:"bench",label:bm.name, r:bm.r});
+          }
         }
       });
       var bkey = (bd.key==="SIF" && (REF.DATA_DATES||{}).sif) ? ("SIF (as on "+REF.DATA_DATES.sif+")") : bd.key;
@@ -1365,14 +1434,22 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
         var byCat={}, catList=[];
         hs.forEach(function(h){ var c=h.category||"Other"; if(!byCat[c]){byCat[c]=[];catList.push(c);} byCat[c].push(h); });
         var brows=[], seen={};
-        catList.forEach(function(cat){
-          brows.push({type:"sub",label:cat});
-          byCat[cat].forEach(function(h){
+        /* Identical grouping to the Regular list, or the Regular/Direct toggle
+           would reorder the sheet under the reader. */
+        var _grpsD=(bd.key==="Equity MF")?perfGroupsFor(catList,byCat)
+                                         :catList.map(function(c){return {label:c,cats:[c],bench:null};});
+        _grpsD.forEach(function(_g){
+          var cat=_g.cats[0];
+          brows.push({type:"sub",label:_g.label});
+          _g.cats.forEach(function(_c){ byCat[_c].forEach(function(h){
             if (seen[h.perfKeyDirect]) return; seen[h.perfKeyDirect]=1;
             var src=MFD[h.perfKeyDirect];
             brows.push({type:"fund",name:h.name,key:h.perfKeyDirect,inception:src.inception,aum:src.aum,r:src.r||{},mcap:src.mcap||{},debt:src.debt||{}});
-          });
-        if (bd.key!=="SIF"){ var bm=resolveBench(cat,bd.key,REF); brows.push({type:"bench",label:bm.name,r:bm.r}); }
+          }); });
+        if (bd.key!=="SIF"){
+          if(_g.bench&&_g.bench.length){ _g.bench.forEach(function(_bn){ var b=benchByName(_bn,REF); if(b) brows.push({type:"bench",label:b.name,r:b.r}); }); }
+          else { var bm=resolveBench(cat,bd.key,REF); brows.push({type:"bench",label:bm.name,r:bm.r}); }
+        }
         });
         directByKey[bd.key]={key:bd.key, cols:bd.cols, mcap:!!bd.mcap, debt:!!bd.debt, rows:brows, direct:true};
       });
@@ -4610,25 +4687,30 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
   }
   function downloadOvImage(ov,selArr,thVal,tag){ var cv=overlapCanvas(ov,selArr,thVal); if(!cv){ alert('No funds with overlap >= the current threshold. Lower the slider.'); return; } var a=document.createElement('a'); a.href=cv.toDataURL('image/png'); a.download=((tag&&/post/i.test(tag))?'Post-Rebalancing Overlap Matrix_':'Overlap Matrix_')+model.meta.familyName+'_'+model.meta.asOnDate+'.png'; a.click(); }
   /* Drops fund rows with NO real return value across the bucket's columns (unmatched
-     instruments or matched-but-blank records), and cascades to drop a category's sub-header
-     + benchmark row if zero funds remain under it. Shared by the dashboard Performance tab
-     and the PPTX Performance slide (NOT the XLSX Performance sheet, which stays a complete
-     raw data dump by design). */
+     instruments or matched-but-blank records), and cascades to drop a group's sub-header
+     and its benchmark row(s) if zero funds remain under it. Shared by the dashboard
+     Performance tab and the PPTX Performance slide (NOT the XLSX Performance sheet,
+     which stays a complete raw data dump by design).
+
+     A group may carry SEVERAL benchmarks — Diversified Funds has three, Index Funds
+     gains a second when a Nifty Next 50 fund is held. They are collected and emitted
+     together at the end of the group. Flushing on each benchmark, as this used to,
+     emptied the buffer on the first one and silently dropped the rest. */
   window.filterPerfBuckets = function(buckets){
     function hasReturn(r, cols){
       for (var i=0;i<cols.length;i++){ var v=(r.r||{})[cols[i]]; if (v!=null && !isNaN(v)) return true; }
       return false;
     }
     function filterBucket(bk){
-      var cols=bk.cols, out=[], buf=[], bufHasFund=false;
-      function flush(benchRow){
-        if (bufHasFund){ out=out.concat(buf); if (benchRow) out.push(benchRow); }
-        buf=[]; bufHasFund=false;
+      var cols=bk.cols, out=[], buf=[], bufHasFund=false, pendBench=[];
+      function flush(){
+        if (bufHasFund){ out=out.concat(buf); out=out.concat(pendBench); }
+        buf=[]; bufHasFund=false; pendBench=[];
       }
       (bk.rows||[]).forEach(function(r){
         if (r.type==='sub'){ flush(); buf=[r]; bufHasFund=false; return; }
         if (r.type==='fund'){ if (hasReturn(r,cols)){ buf.push(r); bufHasFund=true; } return; }
-        if (r.type==='bench'){ flush(r); return; }
+        if (r.type==='bench'){ pendBench.push(r); return; }
         buf.push(r);
       });
       flush();
