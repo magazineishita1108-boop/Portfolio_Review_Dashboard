@@ -2689,7 +2689,10 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       ss.addShape(pptx.ShapeType.roundRect,{x:6.4,y:1.05,w:6.75,h:5.95,rectRadius:0.04,fill:{color:'FFFFFF'},line:{color:C.greyL,width:1}});
       ss.addChart(pptx.ChartType.bar,[{name:'CMV',labels:catLabels.slice().reverse(),values:catVals.slice().reverse()}],
         {x:6.55,y:1.15,w:6.55,h:5.75,barDir:'bar',chartColors:[C.gold],showValue:true,dataLabelFormatCode:'0.00',dataLabelFontFace:F,dataLabelColor:C.black,dataLabelFontSize:8,catAxisLabelFontFace:F,catAxisLabelFontSize:8,valAxisHidden:true,valGridLine:{style:'none'},catGridLine:{style:'none'},showLegend:false,barGapWidthPct:40});
-      foot(ss,'*Equity Mutual Funds only. CMV in '+model.unit.cap+'. As on '+model.meta.asOnDate+'. Risk data from Risk Ratios file. 3Y Rolling from NAV data (May 2021–May 2026).');
+      /* dates follow the data, not a hard-coded vintage */
+      var _dd=(model.meta.dataDates&&model.meta.dataDates.performance)||model.meta.asOnDate;
+      var _dd5=(window.MFA_GATE&&window.MFA_GATE.minusYears)?window.MFA_GATE.minusYears(_dd,5):'';
+      foot(ss,'*Equity Mutual Funds only. CMV in '+model.unit.cap+'. As on '+model.meta.asOnDate+'. Risk ratios as on '+_dd+'. 3Y Rolling from NAV data'+(_dd5?(' ('+_dd5+' – '+_dd+')'):'')+'.');
 
       /* ── Per-category slides ── */
       var _COLS=['Fund / Average / Benchmark','CMV','Wt%','Beta','SD (Ann.)','Alpha','Sortino','Sharpe','Down Cap.','3Y Roll.'];
@@ -2712,10 +2715,7 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
           var sc=base(slideTitle);
 
           /* sub-label */
-          /* The universe count is the category size; the 3Y rolling average is
-             taken over only the funds old enough to have one, so that count is
-             quoted separately rather than letting one number stand for both. */
-          sc.addText((rrCat!==dispCat?'RR Category: '+rrCat+' · ':'')+(uCnt?uCnt+' funds in universe'+(uni&&uni.r3y_n!=null?' (3Y Rolling avg from '+uni.r3y_n+')':'')+' · ':'')+'Benchmarks: '+(bmKeys.length?bmKeys.join(', '):'—'),
+          sc.addText((rrCat!==dispCat?'RR Category: '+rrCat+' · ':'')+(uCnt?uCnt+' funds in universe · ':'')+'Benchmarks: '+(bmKeys.length?bmKeys.join(', '):'—'),
             {x:0.18,y:0.95,w:13.0,h:0.18,fontFace:F,fontSize:8.5,italic:true,color:'888888'});
 
           /* build table */
@@ -3567,7 +3567,14 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
   /* Drop the nine metrics, keep everything else — cat above all, which drives
      category resolution downstream. */
   function mfaMask(rd){ var o={}; for(var k in rd){ if(MFA_METRICS.indexOf(k)<0) o[k]=rd[k]; } return o; }
-  try{ window.MFA_GATE={status:mfaAgeStatus,mask:mfaMask,metrics:MFA_METRICS}; }catch(e){}
+  /* "31 Jul 2026" -> "31 Jul 2021". The rolling window begins five years
+     before the as-on date, so this is the same anchor the calculation uses and
+     the prose no longer needs editing at each refresh. */
+  function ddMinusYears(s,n){
+    var m=/^(\s*\d{1,2}\s+[A-Za-z]{3,}\s+)(\d{4})\s*$/.exec(String(s||''));
+    return m?(m[1]+(Number(m[2])-n)).trim():'';
+  }
+  try{ window.MFA_GATE={status:mfaAgeStatus,mask:mfaMask,metrics:MFA_METRICS,minusYears:ddMinusYears}; }catch(e){}
   function r4(x){ return Math.round(x*1e4)/1e4; }
   function fmtDate(v){ if(v==null)return ""; if(v instanceof Date){ return v.getFullYear()+"-"+("0"+(v.getMonth()+1)).slice(-2)+"-"+("0"+v.getDate()).slice(-2); } return clean(v); }
 
@@ -5597,7 +5604,8 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
                     +'':', suggesting the fund has not consistently beaten its index benchmark over the measured period.'));
         });
       } else {
-        rollLines.push('3-year rolling return data is not available for this fund, likely because it was launched after May 2021.');
+        var _d5=(window.MFA_GATE&&window.MFA_GATE.minusYears)?window.MFA_GATE.minusYears((model.meta.dataDates&&model.meta.dataDates.performance)||'',5):'';
+        rollLines.push('3-year rolling return data is not available for this fund'+(_d5?(', likely because it was launched after '+_d5):'')+'.');
       }
       if(rollLines.length) paras.push('<p><u><b>3-Year Rolling Return</b></u><br>'+rollLines.join(' ')+'</p>');
 
@@ -5631,10 +5639,13 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
       else if(greenCount>=3){verdict='mixed-to-positive profile';vColour='#2E7D32';}
       else if(greenCount>=2){verdict='mixed profile with some concerns';vColour='#e65100';}
       else{verdict='weak relative profile requiring close monitoring';vColour='#7f0f0f';}
+      /* vintage follows the data */
+      var _ddP=(model.meta.dataDates&&model.meta.dataDates.performance)||model.meta.asOnDate||'';
+      var _ddP5=(window.MFA_GATE&&window.MFA_GATE.minusYears)?window.MFA_GATE.minusYears(_ddP,5):'';
       paras.push('<p><u><b>Overall Assessment</b></u><br>'
         +'Based on available data, <b>'+nm+'</b> presents a <b style="color:'+vColour+';">'+verdict+'</b> '
         +'within the '+rrCat+' category ('+greenCount+' metrics above universe avg, '+redCount+' below). '
-        +'This analysis is based on May 2026 risk ratios and 3-year rolling returns computed from NAV data (May 2021 – May 2026).'
+        +'This analysis is based on '+_ddP+' risk ratios and 3-year rolling returns computed from NAV data'+(_ddP5?(' ('+_ddP5+' \u2013 '+_ddP+')'):'')+'.'
         +'</p>');
 
       if(!paras.length) return '<p style="color:#888;font-size:12px;">Insufficient data available for detailed rationale.</p>';
@@ -5705,6 +5716,8 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
     };
 
     /* ── modal HTML (injected once) ─────────────────────────────────────── */
+    var _mdP=(model.meta.dataDates&&model.meta.dataDates.performance)||model.meta.asOnDate||'';
+    var _mdP5=(window.MFA_GATE&&window.MFA_GATE.minusYears)?window.MFA_GATE.minusYears(_mdP,5):'';
     var modalHtml='<div id="mfa-overlay" onclick="if(event.target===this)closeMFARat()">'
       +'<div id="mfa-modal">'
       +'<div id="mfa-modal-hdr">'
@@ -5712,7 +5725,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
       +'<button id="mfa-modal-close" onclick="closeMFARat()">✕ Close</button>'
       +'</div>'
       +'<div id="mfa-modal-body"></div>'
-      +'<div id="mfa-modal-footer">Analysis based on May 2026 Risk Ratios data &amp; 3Y rolling returns computed from NAV data (May 2021–May 2026). For informational use only.</div>'
+      +'<div id="mfa-modal-footer">Analysis based on '+_mdP+' Risk Ratios data &amp; 3Y rolling returns computed from NAV data'+(_mdP5?(' ('+_mdP5+'\u2013'+_mdP+')'):'')+'. For informational use only.</div>'
       +'</div></div>';
 
     /* ── summary KPIs ────────────────────────────────────────────────────── */
@@ -5834,18 +5847,9 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
           +'</tr>';
       });
       html_out+='</tbody></table>';
-      /* What the two summary rows used to say in their Rationale cell, on one
-         line with room for it. Both are disclosures rather than commentary:
-         the universe average is over the funds reporting each metric, not the
-         whole category; and an index carries no expense ratio, so its
-         risk-adjusted figures are flattered against a fund's by roughly
-         TER / volatility before any skill is involved. */
-      (function(){
-        var bits=[];
-        bits.push('Universe Avg is the mean over the funds reporting each metric, not all '+uCnt+(isN(uni.r3y)&&uni.r3y_n!=null?' — 3Y Rolling from '+uni.r3y_n+' of '+uCnt:'')+'.');
-        if(bmKeys.length) bits.push('Benchmark rows are index series before costs and are not investable at zero cost; their Beta 1.00 and Down Capture 100.00% are definitional against the index itself, not measured.');
-        html_out+='<div style="font-family:Cambria,serif;font-size:10.5px;color:#5C3E17;font-style:italic;margin:4px 2px 14px;">'+bits.join(' ')+'</div>';
-      })();
+      /* No note under the table: the Universe Avg and benchmark qualifiers were
+         removed at the desk's request. The per-cell title tooltips on the
+         universe row still carry the contributing counts. */
     });
 
     html_out+='</div></div>';
