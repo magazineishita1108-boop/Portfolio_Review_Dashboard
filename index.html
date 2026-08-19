@@ -2511,7 +2511,10 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
         var rd=_fuzzy(h.name)||{};
         var dispCat=(h.category&&h.category.trim())?h.category.trim():(rd.cat||'Other');
         var rrCat=_resolveCat(dispCat)||(rd.cat||'Other');
-        return {h:h,rd:rd,dispCat:dispCat,rrCat:rrCat};
+        /* §4A: same gate as the screen, from the same shared helper. */
+        var _st=(window.MFA_GATE?window.MFA_GATE.status(h,rd,REF,model.meta.dataDates.performance):'ok');
+        if(_st!=='ok'){ if(_st==='young')_mfaYoungX++; else _mfaUnresX++; rd=window.MFA_GATE.mask(rd); }
+        return {h:h,rd:rd,dispCat:dispCat,rrCat:rrCat,ageStatus:_st};
       });
       if(!eMFs.length) return;
 
@@ -2530,6 +2533,7 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       /* group by category */
       var catMap={};
       eMFs.forEach(function(e){if(!catMap[e.dispCat])catMap[e.dispCat]=[];catMap[e.dispCat].push(e);});
+      var _mfaYoungX=0,_mfaUnresX=0;
       var _CORD=['Large Cap Fund','Large Cap','Large & Mid Cap Fund','Large & Mid Cap','Mid Cap Fund','Mid Cap','Small Cap Fund','Small Cap','Flexi Cap Fund','Flexi Cap','Multi Cap Fund','Multi Cap','Focused Fund','Focused','ELSS','Value / Contra Fund','Value Fund','Contra','Dividend Yield Fund','Dividend Yield','Sectoral / Thematic','Thematic/Sectoral','Index Fund / ETF','Index','Other'];
       var cats=_CORD.filter(function(c){return catMap[c];});
       Object.keys(catMap).forEach(function(c){if(cats.indexOf(c)<0)cats.push(c);});
@@ -3436,6 +3440,39 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
     if(t===t.toUpperCase() && /[A-Z]/.test(t)){ t=t.toLowerCase().replace(/\b([a-z])/g,function(m,c){return c.toUpperCase();}).replace(/\bLtd\b/i,"Ltd").replace(/\bLimited\b/i,"Limited"); }
     return t;
   }
+  /* §4A — one five-year eligibility gate, shared by the deck and the screen.
+     Exposed on window because the MF Analysis logic is duplicated across two
+     IIFEs; a second copy of this rule would drift from the first. */
+  var MFA_METRICS=['beta','sd','alpha','sortino','sharpe','corr','ir','dc','r3y'];
+  function mfaParseAsOn(s){
+    if(!s) return null;
+    var m=/^(\d{1,2})\s+([A-Za-z]{3})[a-z]*\s+(\d{4})$/.exec(String(s).trim());
+    if(!m) return null;
+    var mo={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11}[m[2].toLowerCase()];
+    if(mo==null) return null;
+    return new Date(Date.UTC(+m[3],mo,+m[1]));
+  }
+  /* 'ok' | 'young' | 'unresolved' — never a guess that the fund is old enough. */
+  function mfaAgeStatus(h,rd,REF,asOnStr){
+    var inc=null;
+    try{ var MFP=(REF&&REF.MF_PERF)||{}, k=h&&h.perfKey; if(k&&MFP[k]&&MFP[k].inception) inc=MFP[k].inception; }catch(e){}
+    var asOn=mfaParseAsOn(asOnStr);
+    if(inc&&asOn){
+      var d=new Date(inc+'T00:00:00Z');
+      if(!isNaN(d.getTime())){
+        var cut=new Date(Date.UTC(asOn.getUTCFullYear()-5,asOn.getUTCMonth(),asOn.getUTCDate()));
+        return d<=cut?'ok':'young';
+      }
+    }
+    var has=false; for(var q in rd){ has=true; break; }
+    if(!has) return 'unresolved';
+    if(rd.r3y==null) return 'young';
+    return 'ok';
+  }
+  /* Drop the nine metrics, keep everything else — cat above all, which drives
+     category resolution downstream. */
+  function mfaMask(rd){ var o={}; for(var k in rd){ if(MFA_METRICS.indexOf(k)<0) o[k]=rd[k]; } return o; }
+  try{ window.MFA_GATE={status:mfaAgeStatus,mask:mfaMask,metrics:MFA_METRICS}; }catch(e){}
   function r4(x){ return Math.round(x*1e4)/1e4; }
   function fmtDate(v){ if(v==null)return ""; if(v instanceof Date){ return v.getFullYear()+"-"+("0"+(v.getMonth()+1)).slice(-2)+"-"+("0"+v.getDate()).slice(-2); } return clean(v); }
 
@@ -5304,11 +5341,17 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
     }
 
     /* ── enrich ─────────────────────────────────────────────────────────── */
+    var _mfaYoung=0,_mfaUnres=0;
     equityMFs=equityMFs.map(function(h){
       var rd=fuzzyMatch(h.name)||{};
       var dispCat=(h.category&&h.category.trim())?h.category.trim():(rd.cat||'Other');
       var rrCat=resolveRRCat(dispCat)||(rd.cat||'Other');
-      return Object.assign({},h,{_rd:rd,_dispCat:dispCat,_rrCat:rrCat});
+      /* §4A: one gate for risk ratios and the rolling return. Masked here so
+         the cells, the rationale and the XLSX all see nulls. */
+      var _st=(window.MFA_GATE?window.MFA_GATE.status(h,rd,activeRef,model.meta.dataDates.performance):'ok');
+      if(_st==='young'){ _mfaYoung++; rd=window.MFA_GATE.mask(rd); }
+      else if(_st==='unresolved'){ _mfaUnres++; rd=window.MFA_GATE.mask(rd); }
+      return Object.assign({},h,{_rd:rd,_dispCat:dispCat,_rrCat:rrCat,_mfaAge:_st});
     });
 
     /* ── collapse holdings of the SAME fund (held under different clients/distributors) into one row ── */
@@ -5565,6 +5608,14 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
       +'<div class="mfa-kpi"><div class="v">'+wR+'</div><div class="l">With Risk Data</div></div>'
       +'<div class="mfa-kpi"><div class="v">'+wRo+'</div><div class="l">With 3Y Rolling</div></div>'
       +'</div>';
+    /* §4A: silence without a count is indistinguishable from a matching
+       failure, so both reasons are stated and counted separately. */
+    if(_mfaYoung||_mfaUnres){
+      var _fn=[];
+      if(_mfaYoung) _fn.push('<b>'+_mfaYoung+'</b> fund'+(_mfaYoung===1?'':'s')+' held for under 5 years — risk ratios and rolling returns not shown');
+      if(_mfaUnres) _fn.push('<b>'+_mfaUnres+'</b> fund'+(_mfaUnres===1?'':'s')+' whose age could not be resolved — shown blank rather than assumed eligible');
+      html_out+='<div style="font-family:Cambria;font-size:11px;color:#5C3E17;font-style:italic;margin:2px 0 10px;">'+_fn.join(' · ')+'.</div>';
+    }
 
     var COLS=['Fund Name','CMV','Wt %','Beta','SD (Ann.)','Alpha','Sortino','Sharpe','Corr.','Info Ratio','Down Cap.','3Y Rolling','Rationale'];
 
