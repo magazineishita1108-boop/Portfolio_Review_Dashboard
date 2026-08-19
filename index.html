@@ -5034,8 +5034,9 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
         return line+'</tr>';
       }).join('');
       html+='<div class="card"><h3>Proposed Funds — '+rbEsc(bk.key)+'</h3>'
-          + '<div style="overflow:auto;"><table class="cz" style="font-size:11.5px;"><tr>'+head+'</tr>'+body+'</table></div></div>';
+          + '<div style="overflow:auto;"><table class="cz pfw" style="font-size:11.5px;"><tr>'+head+'</tr>'+body+'</table></div></div>';
     });
+    ensurePerfCss();
     if(unmatched.length){
       html+='<div class="card"><h3>Proposed Funds — No Performance Data ('+unmatched.length+')</h3>'
           + '<div class="sub">These funds carry no performance record in the dashboard’s reference data. Nothing is inferred for them.</div>'
@@ -5054,7 +5055,25 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
     try{ window.__PROPPERF_DATA={buckets:out, unmatched:unmatched, asOn:asOn, planDir:planDir, hasDirect:!!P.hasDirect, empty:false}; }catch(e){}
   }
 
+  /* Performance-sheet column widths. Only the scheme name wraps; every other
+     cell sizes to its own content, so the date stays on one line and the
+     numeric columns come out even. Injected once — renderPerf runs on every
+     plan toggle. */
+  function ensurePerfCss(){
+    if(document.getElementById('pfw-css')) return;
+    var st=document.createElement('style'); st.id='pfw-css';
+    st.textContent='table.pfw{width:100%;}'+
+      'table.pfw td,table.pfw th{white-space:nowrap;}'+
+      /* every column but the scheme name shrinks to its content; width:1% is
+         the standard way to say "take only what you need", so the remaining
+         width falls to the first column */
+      'table.pfw td:not(:first-child),table.pfw th:not(:first-child){width:1%;}'+
+      'table.pfw td:first-child,table.pfw th:first-child{white-space:normal;min-width:230px;width:auto;}'+
+      'table.pfw td:nth-child(2),table.pfw th:nth-child(2){text-align:center;}';
+    document.head.appendChild(st);
+  }
   function renderPerf(){
+    ensurePerfCss();
     var s=document.getElementById('s-perf'); var html='';
     if(!model.performance.buckets.length){ s.innerHTML=dlBar('perf')+'<div class="card"><div class="empty">No performance data available.</div></div>'+'<div id="perf-proposed"></div>'; renderProposedPerf(); return; }
     var P=model.performance;
@@ -5090,7 +5109,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
         return line+'</tr>';
       }).join('');
       html+='<div class="card"><h3>Performance Sheet — '+bk.key+(P.hasDirect?(' ('+(planDir?'Direct':'Regular')+' Plan)'):'')+'</h3><div class="sub">*Performance as on '+asOn+(P.hasDirect?(' · '+(planDir?'Direct':'Regular')+' Plan'):'')+'. Annualised for ≥1Y. Missing data shown as —.</div>'+
-        '<div style="overflow:auto;"><table class="cz" style="font-size:11.5px;"><tr>'+head+'</tr>'+body+'</table></div></div>';
+        '<div style="overflow:auto;"><table class="cz pfw" style="font-size:11.5px;"><tr>'+head+'</tr>'+body+'</table></div></div>';
     });
     s.innerHTML=dlBar('perf')+html+'<div id="perf-proposed"></div>';
     if(P.hasDirect){
