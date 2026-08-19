@@ -2533,6 +2533,19 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       var _CORD=['Large Cap Fund','Large Cap','Large & Mid Cap Fund','Large & Mid Cap','Mid Cap Fund','Mid Cap','Small Cap Fund','Small Cap','Flexi Cap Fund','Flexi Cap','Multi Cap Fund','Multi Cap','Focused Fund','Focused','ELSS','Value / Contra Fund','Value Fund','Contra','Dividend Yield Fund','Dividend Yield','Sectoral / Thematic','Thematic/Sectoral','Index Fund / ETF','Index','Other'];
       var cats=_CORD.filter(function(c){return catMap[c];});
       Object.keys(catMap).forEach(function(c){if(cats.indexOf(c)<0)cats.push(c);});
+      /* Summary slide is a ranking, so order by CMV descending and drive both
+         the table and the chart from this one ordering — computed once, so the
+         two cannot diverge. _CORD breaks ties, keeping equal-CMV categories in
+         SEBI order rather than at the mercy of sort stability. The per-category
+         slides that follow keep _CORD: they are a walk-through, not a ranking. */
+      var _catCMV={};
+      cats.forEach(function(c){ _catCMV[c]=catMap[c].reduce(function(a,e){return a+(e.h.cmvCr||0);},0); });
+      cats.sort(function(a,b){
+        var d=_catCMV[b]-_catCMV[a];
+        if(d!==0) return d;
+        var ia=_CORD.indexOf(a), ib=_CORD.indexOf(b);
+        return (ia<0?_CORD.length:ia)-(ib<0?_CORD.length:ib);
+      });
 
       var totalMFCMV=eMFs.reduce(function(a,e){return a+(e.h.cmvCr||0);},0);
 
