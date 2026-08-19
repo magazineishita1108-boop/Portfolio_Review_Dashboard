@@ -8330,29 +8330,51 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
       return [1,0];
     }
 
-    (model.holdings||[]).forEach(function(h){
-      var cmv=h.cmvCr||0;
-      var b=_cvsBucket(h);
-      if(b){ CVS_GROUPS[b[0]].rows[b[1]].currAlloc+=cmv; return; }
-      /* Hybrid — split by the actual equity sleeve weight */
-      var eqSlice=(model.equityAnalytics&&model.equityAnalytics.hasData&&model.totalCMV)?
-        (model.equityAnalytics.exposureCr/(model.totalCMV||1)):0.5;
-      if(!(eqSlice>=0&&eqSlice<=1)) eqSlice=0.5;
-      CVS_GROUPS[1].rows[0].currAlloc+=cmv*eqSlice;     /* Equity MF sleeve */
-      CVS_GROUPS[0].rows[0].currAlloc+=cmv*(1-eqSlice); /* Debt MF sleeve */
-    });
-
-    /* convert CMV Cr to % of total portfolio (products with no holdings stay 0.00) */
-    var _cvsAll=[];
-    CVS_GROUPS.forEach(function(g){ g.rows.forEach(function(r){ r.currAlloc=r.currAlloc/ttl*100; _cvsAll.push(r); }); });
-    var _cvsSum=0;
-    _cvsAll.forEach(function(r){ r.currAlloc=Math.round(r.currAlloc*100)/100; _cvsSum+=r.currAlloc; });
-    if(_cvsSum>0 && Math.abs(_cvsSum-100)<0.5){
-      var _resid=Math.round((100-_cvsSum)*100)/100;
-      var _big=_cvsAll[0];
-      _cvsAll.forEach(function(r){ if(r.currAlloc>_big.currAlloc) _big=r; });
-      _big.currAlloc=Math.round((_big.currAlloc+_resid)*100)/100;
+    /* One allocator, used for the current column and again for the sample
+       column. A second bucketing function would drift from this one and the
+       two columns would stop tying out. Returns percentages per CVS row. */
+    function _cvsAllocate(rowsArr){
+      var acc=CVS_GROUPS.map(function(g){ return g.rows.map(function(){ return 0; }); });
+      var tot=0;
+      (rowsArr||[]).forEach(function(h){ tot+=(h.cmvCr||0); });
+      if(!(tot>0)) return {pct:acc, total:0};
+      (rowsArr||[]).forEach(function(h){
+        var cmv=h.cmvCr||0;
+        var b=_cvsBucket(h);
+        if(b){ acc[b[0]][b[1]]+=cmv; return; }
+        /* Hybrid — split by the actual equity sleeve weight */
+        var eqSlice=(model.equityAnalytics&&model.equityAnalytics.hasData&&model.totalCMV)?
+          (model.equityAnalytics.exposureCr/(model.totalCMV||1)):0.5;
+        if(!(eqSlice>=0&&eqSlice<=1)) eqSlice=0.5;
+        acc[1][0]+=cmv*eqSlice;     /* Equity MF sleeve */
+        acc[0][0]+=cmv*(1-eqSlice); /* Debt MF sleeve */
+      });
+      var flat=[];
+      acc.forEach(function(g,gi){ g.forEach(function(v,ri){ acc[gi][ri]=Math.round(v/tot*10000)/100; flat.push([gi,ri]); }); });
+      /* same residual rule as before: give rounding drift to the largest row */
+      var sum=0; flat.forEach(function(p){ sum+=acc[p[0]][p[1]]; });
+      if(sum>0 && Math.abs(sum-100)<0.5){
+        var big=flat[0];
+        flat.forEach(function(p){ if(acc[p[0]][p[1]]>acc[big[0]][big[1]]) big=p; });
+        acc[big[0]][big[1]]=Math.round((acc[big[0]][big[1]]+(100-sum))*100)/100;
+      }
+      return {pct:acc, total:tot};
     }
+    var _cvsCur=_cvsAllocate(model.holdings||[]);
+    CVS_GROUPS.forEach(function(g,gi){ g.rows.forEach(function(r,ri){ r.currAlloc=_cvsCur.pct[gi][ri]; }); });
+    /* Sample column = the post-rebalancing portfolio in the same buckets. With
+       no actions set this reproduces the current column exactly, which is both
+       the intended starting point and the regression check. */
+    var _cvsProp=null;
+    try{ _cvsProp=_cvsAllocate((typeof rbRebalancedHoldings==='function')?rbRebalancedHoldings():(model.holdings||[])); }
+    catch(e){ _cvsProp=null; }
+    if(_cvsProp&&_cvsProp.total>0){
+      CVS_GROUPS.forEach(function(g,gi){ g.rows.forEach(function(r,ri){
+        if(!(window.__cvsEdited&&window.__cvsEdited[gi+'|'+ri])) r.propAlloc=_cvsProp.pct[gi][ri];
+      }); });
+    }
+
+    /* percentages and the residual rule now live in _cvsAllocate above */
     /* actuals snapshot — used to flag manual overrides and to power "Reset to Actual" */
     var _cvsActuals=CVS_GROUPS.map(function(g){ return g.rows.map(function(r){ return r.currAlloc; }); });
 
@@ -8539,6 +8561,9 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
           var val=parseFloat(this.value);
           if(!isNaN(val)){
             cvsGroups[gi].rows[ri][field]=Math.max(0,Math.round(val*100)/100);
+            /* a typed sample allocation is the analyst's, and a later change to
+               the rebalancing plan must not overwrite it without being asked */
+            if(field==='propAlloc'){ try{ (window.__cvsEdited||(window.__cvsEdited={}))[gi+'|'+ri]=1; }catch(e){} }
             rebuildCVS();
           }
         }
@@ -8555,6 +8580,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
           '<input id="cvs-cmv-inp" type="number" value="'+storedCMV.toFixed(2)+'" min="0" step="1" style="width:110px;font-family:Cambria,serif;font-size:13px;border:1px solid #BD9568;border-radius:3px;padding:4px 8px;">'+
         '</div>'+
         '<button id="cvs-reset-btn" type="button" style="font-family:Cambria,serif;font-size:12px;background:#BD9568;color:#fff;border:none;border-radius:3px;padding:6px 14px;cursor:pointer;">Reset to Actual</button>'+
+        '<button id="cvs-reseed-btn" type="button" title="Discard hand-typed Sample Portfolio values and take them from the rebalancing plan again" style="font-family:Cambria,serif;font-size:12px;background:#fff;color:#5C3E17;border:1px solid #BD9568;border-radius:3px;padding:6px 14px;cursor:pointer;">Re-seed from rebalancing plan</button>'+
         '<div style="display:flex;align-items:center;gap:8px;font-family:Cambria,serif;font-size:13px;">'+
           '<label style="font-weight:bold">Inflation (%):</label>'+
           '<input id="cvs-infl-inp" type="number" value="'+storedInfl.toFixed(1)+'" min="0" step="0.5" max="20" style="width:70px;font-family:Cambria,serif;font-size:13px;border:1px solid #BD9568;border-radius:3px;padding:4px 8px;">'+
@@ -8564,7 +8590,9 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
         'Scope: <b style="color:#000">'+((model.meta&&model.meta.familyName)||'Portfolio')+'</b> — all clients / all holdings, as on '+((model.meta&&model.meta.asOnDate)||'—')+'. '+
         'Actual CMV ₹ '+actualCMV.toFixed(2)+' Cr (ties to Asset Allocation Grand Total).<br>'+
         'Current Portfolio Alloc % is derived from base-file holdings using the same asset / product mapping as the Asset Allocation tab. '+
-        'Cells you edit are highlighted in tan — use <b>Reset to Actual</b> to restore. Sample Portfolio and all Exp. Return % columns are manually driven.'+
+        'Cells you edit are highlighted in tan — use <b>Reset to Actual</b> to restore. '+
+        'Sample Portfolio seeds from the rebalancing plan, re-bucketed the same way as the current column, so with no rebalancing actions it equals the current portfolio. '+
+        'Once you type into a Sample cell it is yours and later changes to the plan will not overwrite it — use <b>Re-seed from rebalancing plan</b> to take it back. Exp. Return % columns are house assumptions and are never seeded.'+
       '</p>'+
       '<div id="cvs-tbl-wrap">'+buildCVS(cvsGroups,storedCMV,storedInfl)+'</div>'+
       '</div>';
@@ -8572,6 +8600,15 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
     snapCVS(storedCMV,storedInfl);
     document.getElementById('cvs-cmv-inp').onchange=rebuildCVS;
     document.getElementById('cvs-infl-inp').onchange=rebuildCVS;
+    (function(){
+      var _rb=document.getElementById('cvs-reseed-btn');
+      if(_rb) _rb.onclick=function(){
+        /* clearing the edited set is the whole action — renderCVS re-seeds
+           every row that is no longer held back */
+        try{ window.__cvsEdited={}; }catch(e){}
+        renderCVS();
+      };
+    })();
     (function(){
       var rb=document.getElementById('cvs-reset-btn'); if(!rb) return;
       rb.onclick=function(){
