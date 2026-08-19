@@ -2457,7 +2457,11 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       var _uniD={};
       Object.keys(_uniG).forEach(function(c){
         var fds=_uniG[c];_uniD[c]={_count:fds.length};
-        _UNI_M.forEach(function(m){var vals=fds.map(function(f){return Number(f[m]);}).filter(function(v){return!isNaN(v);});_uniD[c][m]=vals.length?vals.reduce(function(a,b){return a+b;},0)/vals.length:null;});
+        /* Number(null) is 0 and passes !isNaN, so a missing figure used to enter
+           the mean as a real 0.00%. Guard before Number(), and record how many
+           funds actually contributed to each metric — _count is the category
+           size, which is a different and much larger number. */
+        _UNI_M.forEach(function(m){var vals=fds.map(function(f){return f[m];}).filter(function(v){return v!=null&&v!==''&&!isNaN(Number(v));}).map(Number);_uniD[c][m]=vals.length?vals.reduce(function(a,b){return a+b;},0)/vals.length:null;_uniD[c][m+'_n']=vals.length;});
       });
       /* category alias */
       var _CAT_ALIAS={'large cap fund':'Large Cap','large cap':'Large Cap','large cap funds':'Large Cap','mid cap fund':'Mid Cap','mid cap':'Mid Cap','mid cap funds':'Mid Cap','small cap fund':'Small Cap','small cap':'Small Cap','small cap funds':'Small Cap','large & mid cap fund':'Large & Mid Cap','large and mid cap fund':'Large & Mid Cap','large & mid cap funds':'Large & Mid Cap','large & mid cap':'Large & Mid Cap','flexi cap fund':'Flexi Cap','flexi cap funds':'Flexi Cap','flexi cap':'Flexi Cap','multi cap fund':'Multi Cap','multi cap funds':'Multi Cap','multi cap':'Multi Cap','focused fund':'Focused','focused funds':'Focused','focused':'Focused','elss':'ELSS','tax saver':'ELSS','value / contra fund':'Contra','value/contra fund':'Contra','contra fund':'Contra','contra':'Contra','value fund':'Contra','value funds':'Contra','value/contra':'Contra','value':'Contra','contra funds':'Contra','dividend yield fund':'Dividend Yield','dividend yield funds':'Dividend Yield','dividend yield':'Dividend Yield','sectoral / thematic':'Thematic/Sectoral','sectoral/thematic':'Thematic/Sectoral','thematic':'Thematic/Sectoral','sectoral':'Thematic/Sectoral','sectoral / thematic funds':'Thematic/Sectoral','index fund / etf':'Index','index fund/etf':'Index','index fund':'Index','etf':'Index','index':'Index','index funds':'Index'};
@@ -2579,7 +2583,10 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
           var sc=base(slideTitle);
 
           /* sub-label */
-          sc.addText((rrCat!==dispCat?'RR Category: '+rrCat+' · ':'')+(uCnt?uCnt+' funds in universe · ':'')+'Benchmarks: '+(bmKeys.length?bmKeys.join(', '):'—'),
+          /* The universe count is the category size; the 3Y rolling average is
+             taken over only the funds old enough to have one, so that count is
+             quoted separately rather than letting one number stand for both. */
+          sc.addText((rrCat!==dispCat?'RR Category: '+rrCat+' · ':'')+(uCnt?uCnt+' funds in universe'+(uni&&uni.r3y_n!=null?' (3Y Rolling avg from '+uni.r3y_n+')':'')+' · ':'')+'Benchmarks: '+(bmKeys.length?bmKeys.join(', '):'—'),
             {x:0.18,y:0.95,w:13.0,h:0.18,fontFace:F,fontSize:8.5,italic:true,color:'888888'});
 
           /* build table */
@@ -5115,9 +5122,16 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
     Object.keys(uniGroups).forEach(function(c){
       var fds=uniGroups[c];
       uniData[c]={_count:fds.length};
+      /* Number(null) is 0 and passes !isNaN, so a missing figure used to enter
+         the mean as a real 0.00%. Guard before Number(), and record how many
+         funds actually contributed to each metric — _count is the category
+         size, which is a different and much larger number. */
       UNI_M.forEach(function(m){
-        var vals=fds.map(function(f){return Number(f[m]);}).filter(function(v){return !isNaN(v);});
+        var vals=fds.map(function(f){return f[m];})
+                    .filter(function(v){return v!=null&&v!==''&&!isNaN(Number(v));})
+                    .map(Number);
         uniData[c][m]=vals.length?vals.reduce(function(a,b){return a+b;},0)/vals.length:null;
+        uniData[c][m+'_n']=vals.length;
       });
     });
 
@@ -5481,17 +5495,22 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
       });
       html_out+='</tr></thead><tbody>';
 
-      /* Universe avg row */
+      /* Universe avg row. Each cell carries the number of funds actually
+         behind it, because the category size and the contributing count are
+         different numbers and only the second one describes the average. */
       function ucell(m,pct_){
-        var v=uni[m];if(!isN(v)) return '<td class="n">—</td>';
-        return '<td class="n">'+(pct_?pv(v):fv(v))+'</td>';
+        var v=uni[m];
+        var n=uni[m+'_n'];
+        if(!isN(v)||n===0) return '<td class="n" title="no fund in this category reports '+m+'">—</td>';
+        var tip=(n==null?'':n+' of '+uCnt+' funds contributed');
+        return '<td class="n" title="'+tip+'">'+(pct_?pv(v):fv(v))+'</td>';
       }
       html_out+='<tr class="ur">'
         +'<td class="tl">Universe Avg <span style="font-weight:normal;font-size:10px;">('+uCnt+' '+rrCat+' funds)</span></td>'
         +'<td class="n">—</td><td class="n">—</td>'
         +ucell('beta')+ucell('sd')+ucell('alpha')+ucell('sortino')+ucell('sharpe')
         +ucell('corr')+ucell('ir')+ucell('dc')+ucell('r3y',true)
-        +'<td style="font-size:10px;color:#5C3E17;font-style:italic;">Avg of all '+uCnt+' funds · Risk Ratios file</td>'
+        +'<td style="font-size:10px;color:#5C3E17;font-style:italic;">Avg over funds reporting each metric'+(isN(uni.r3y)&&uni.r3y_n!=null?' · 3Y Rolling from '+uni.r3y_n+' of '+uCnt:'')+' · Risk Ratios file</td>'
         +'</tr>';
 
       /* Benchmark rows — SD, Sortino and Sharpe on the same locked basis as the
