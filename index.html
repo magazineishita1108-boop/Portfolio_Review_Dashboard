@@ -1193,6 +1193,15 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       uniqStocks[k]=true; uqSrc[src]=true;
     }
     var db_sector={}, db_rating={}, db_issuer={}, db_exp=0;
+    /* Who fed each sleeve. Recorded at the point of contribution rather than
+       re-derived afterwards, so the list cannot drift from the numbers: if a
+       holding is here it added exposure, and `exp` is what it added. */
+    var eqFunds=[], dbFunds=[];
+    function noteFund(list,h,key,src,exp){
+      if(!(exp>0)) return;
+      list.push({name:h.name, key:(key&&key!==h.name)?key:null, src:src,
+                 product:h.product||'', amc:h.amcDisplay||h.amc||'', cmv:h.cmvCr, exp:exp});
+    }
     function addPct(obj,k,v){ obj[k]=(obj[k]||0)+v; }
     rows.forEach(function(h){
       var Cv=h.cmvCr;
@@ -1202,6 +1211,7 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
         if (h.stockInfo){ var dmc=h.stockInfo[0]||"Others", dsec=h.stockInfo[1]||"Others";
           addPct(eq_mcap,dmc,Cv); addPct(eq_sector,dsec,Cv);
           addPct(eq_stock,h.name,Cv); eq_stock_mcap[h.name]=dmc; eq_exp+=Cv; addUniq(h.name,"direct");
+          noteFund(eqFunds,h,null,"Direct Equity",Cv);
         }
         return;
       }
@@ -1213,6 +1223,7 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
         var _uqs = /pms/i.test(h.product||"") ? "pms" : "mf";
         a.stocks.forEach(function(st){ addPct(eq_stock,st[0],st[1]/100*Cv); eq_stock_mcap[st[0]]=st[2]; addUniq(st[0],_uqs); });
         eq_exp += smc/100*Cv;
+        noteFund(eqFunds,h,h.eqKey,(/pms/i.test(h.product||"")?"Equity PMS":(/aif/i.test(h.product||"")?"Equity AIF":"Equity MF")),smc/100*Cv);
       }
       // hybrid: split eq + db by the fund's ACTUAL sleeve weights (no double-count)
       if (h.hyKey && HY[h.hyKey]){
@@ -1222,6 +1233,7 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
           Object.keys(e.sector).forEach(function(s){ addPct(eq_sector,s,e.sector[s]/100*w*Cv); });
           e.stocks.forEach(function(st){ addPct(eq_stock,st[0],st[1]/100*w*Cv); eq_stock_mcap[st[0]]=st[2]; addUniq(st[0],"hyb"); });
           eq_exp += w*Cv;
+          noteFund(eqFunds,h,h.hyKey,"Hybrid — equity sleeve",w*Cv);
         }
         if (hy.db){ var d=hy.db;
           /* The sleeves partition the fund, so the debt share is whatever the
@@ -1238,6 +1250,7 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
           Object.keys(d.rating).forEach(function(rt){ addPct(db_rating,rt,d.rating[rt]/100*w2*Cv); });
           Object.keys(d.issuer).forEach(function(is){ addPct(db_issuer,is,d.issuer[is]/100*w2*Cv); });
           db_exp += w2*Cv;
+          noteFund(dbFunds,h,h.hyKey,"Hybrid — debt sleeve",w2*Cv);
         }
       }
       // pure debt analytics (only if not already counted via hybrid/equity)
@@ -1247,8 +1260,15 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
         Object.keys(dd.rating).forEach(function(rt){ addPct(db_rating,rt,dd.rating[rt]/100*Cv); });
         Object.keys(dd.issuer).forEach(function(is){ addPct(db_issuer,is,dd.issuer[is]/100*Cv); });
         db_exp += Cv;
+        noteFund(dbFunds,h,h.dbKey,"Debt MF",Cv);
       }
     });
+    /* Share of the sleeve, so the list reconciles to the block above it. */
+    function finishFunds(list,tot){
+      list.forEach(function(f){ f.pct = tot>0 ? f.exp/tot*100 : 0; });
+      return list.sort(function(a,b){ return (b.exp-a.exp) || (a.name<b.name?-1:1); });
+    }
+    finishFunds(eqFunds,eq_exp); finishFunds(dbFunds,db_exp);
     function normArr(obj,exp){ return Object.keys(obj).map(function(k){return {k:k,pct:exp?obj[k]/exp*100:0};}).sort(function(a,b){return b.pct-a.pct;}); }
     var mcapOrder=["Large Cap","Mid Cap","Small Cap","Others"];
     var eqMcapArr = mcapOrder.filter(function(b){return eq_mcap[b]!=null;}).map(function(b){return {k:b,pct:eq_exp?eq_mcap[b]/eq_exp*100:0};});
@@ -1278,6 +1298,7 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       uniqueStockSrc: uqSrc,
       uniqueStockNote: uniqueStockNote,
       mcap: eqMcapArr,
+      funds: eqFunds,
       sectors: normArr(eq_sector,eq_exp).slice(0,10),
       stocks: normArr(eq_stock,eq_exp).slice(0,20).map(function(o){return {k:o.k,pct:o.pct,mcap:eq_stock_mcap[o.k]||""};})
     };
@@ -1302,6 +1323,7 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
     var debtAnalytics = {
       hasData: db_exp>0,
       exposureCr: db_exp,
+      funds: dbFunds,
       sectors: normArr(db_sector,db_exp).slice(0,12),
       ratings: (function(){
           var grp={}; Object.keys(db_rating).forEach(function(rt){ var g=ratingGroup(rt); grp[g]=(grp[g]||0)+db_rating[rt]; });
@@ -4508,7 +4530,55 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
     }
     return anCache[anScope];
   }
+  /* Styling for the contributor disclosures. Injected once — renderAnalytics
+     runs on every scope change. Palette only. */
+  function ensureFundBoxCss(){
+    if(document.getElementById('fbx-css')) return;
+    var st=document.createElement('style'); st.id='fbx-css';
+    st.textContent='details.fbx{font-family:Cambria,serif;margin:2px 0 12px;border:1px solid #BD9568;border-radius:4px;background:#FFFFFF;}'+
+      'details.fbx>summary{cursor:pointer;padding:6px 10px;font-size:12px;color:#5C3E17;background:#DBC8B2;border-radius:3px;list-style:none;user-select:none;}'+
+      'details.fbx>summary::-webkit-details-marker{display:none;}'+
+      /* caret drawn rather than relying on the platform marker, which differs per browser */
+      'details.fbx>summary:before{content:"\\25B8";display:inline-block;margin-right:7px;transition:transform .12s;}'+
+      'details.fbx[open]>summary:before{transform:rotate(90deg);}'+
+      'details.fbx .fbxwrap{max-height:260px;overflow:auto;}'+
+      'table.fbxt{width:100%;border-collapse:collapse;font-size:11px;}'+
+      'table.fbxt th{position:sticky;top:0;background:#FFFFFF;text-align:left;font-weight:bold;color:#000000;border-bottom:1px solid #BFBFBF;padding:5px 8px;}'+
+      'table.fbxt td{border-bottom:1px solid #D9D9D9;padding:4px 8px;vertical-align:top;}'+
+      'table.fbxt td.n,table.fbxt th.n{text-align:right;white-space:nowrap;}'+
+      'table.fbxt .fbxas{display:block;font-size:10px;color:#5C3E17;font-style:italic;}'+
+      'table.fbxt tfoot td{font-weight:bold;border-top:1px solid #BFBFBF;border-bottom:none;}';
+    document.head.appendChild(st);
+  }
+  function fbxEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  /* The list of holdings behind one analytics block. `label` names the sleeve
+     so the two disclosures on the page stay distinguishable. */
+  function fundBox(list,label,unitCap){
+    if(!list||!list.length) return '';
+    var srcCount={};
+    list.forEach(function(f){ srcCount[f.src]=(srcCount[f.src]||0)+1; });
+    var mix=Object.keys(srcCount).map(function(k){ return k+' '+srcCount[k]; }).join(' · ');
+    var totCmv=0, totPct=0;
+    var body=list.map(function(f){
+      totCmv+=f.cmv||0; totPct+=f.pct||0;
+      return '<tr><td>'+fbxEsc(f.name)+
+        (f.key?'<span class="fbxas">matched as: '+fbxEsc(f.key)+'</span>':'')+'</td>'+
+        '<td>'+fbxEsc(f.src)+'</td>'+
+        '<td class="n">'+(f.cmv==null?'—':Number(f.cmv).toFixed(2))+'</td>'+
+        '<td class="n">'+Number(f.exp||0).toFixed(2)+'</td>'+
+        '<td class="n">'+Number(f.pct||0).toFixed(2)+'</td></tr>';
+    }).join('');
+    return '<details class="fbx"><summary>'+list.length+' holding'+(list.length===1?'':'s')+
+      ' included in the '+fbxEsc(label)+' analysis — '+fbxEsc(mix)+'</summary>'+
+      '<div class="fbxwrap"><table class="fbxt"><thead><tr><th>Holding</th><th>Counted as</th>'+
+      '<th class="n">CMV ('+fbxEsc(unitCap||'Cr')+')</th><th class="n">'+fbxEsc(label)+' exposure</th><th class="n">% of sleeve</th></tr></thead>'+
+      '<tbody>'+body+'</tbody>'+
+      '<tfoot><tr><td colspan="2">Total</td><td class="n">'+totCmv.toFixed(2)+'</td>'+
+      '<td class="n">'+totPct.toFixed(0)+'%</td><td class="n">'+totPct.toFixed(2)+'</td></tr></tfoot>'+
+      '</table></div></details>';
+  }
   function renderAnalytics(){
+    ensureFundBoxCss();
     var s=document.getElementById('s-analytics');
     anCharts.forEach(function(c){try{c.destroy();}catch(e){}}); anCharts=[];
     var AM=analyticsSrc(); var ea=AM.equityAnalytics, da=AM.debtAnalytics; var html='';
@@ -4518,6 +4588,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
         '<div style="flex:1;background:#DBC8B2;border-radius:5px;padding:10px 12px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#000;">'+(ea.totalStockCount||0)+'</div><div style="font-size:11px;color:#3a2810;">Total Number of Stocks</div></div>'+
         '<div style="flex:1;background:#DBC8B2;border-radius:5px;padding:10px 12px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#000;">'+(ea.uniqueStockCount||0)+'</div><div style="font-size:11px;color:#3a2810;">Total Unique Number of Stocks</div></div></div>';
       html+='<div class="card"><h3>Portfolio Analytics — Equity</h3><div class="sub">*Analytics as on '+model.meta.dataDates.analytics+'. Equity sleeve weighted by holding CMV; block sums to 100.00%. '+ea.uniqueStockNote+'</div>'+
+        fundBox(ea.funds,'Equity',AM.unit&&AM.unit.cap)+
         '<div class="flex"><div class="col">'+eqKpi+'<h4 style="margin:4px 0;">Market-Cap Allocation</h4><div class="chartbox"><canvas id="eqMcap"></canvas></div>'+
         '<h4 style="margin:14px 0 4px;">Top Sectors</h4><div class="chartbox tall"><canvas id="eqSec"></canvas></div></div>'+
         '<div class="col"><h4 style="margin:4px 0;">Top Underlying Holdings</h4><table class="cz"><tr><th>Holding</th><th>% Eq</th></tr>'+stocks+'</table></div></div></div>';
@@ -4529,6 +4600,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
         '<div style="flex:1;background:#DBC8B2;border-radius:5px;padding:10px 12px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#000;">'+_dn(da.avgModDur)+'</div><div style="font-size:11px;color:#3a2810;">Avg Modified Duration (yrs)</div></div>'+
         '<div style="flex:1;background:#DBC8B2;border-radius:5px;padding:10px 12px;text-align:center;"><div style="font-size:20px;font-weight:bold;color:#000;">'+_dn(da.avgYTM)+(da.avgYTM==null?'':'%')+'</div><div style="font-size:11px;color:#3a2810;">Avg YTM</div></div></div>';
       html+='<div class="card"><h3>Portfolio Analytics — Debt</h3><div class="sub">*Analytics as on '+model.meta.dataDates.analytics+'. Debt sleeve weighted by holding CMV; block sums to 100.00%. Avg Modified Duration &amp; Avg YTM are CMV-weighted across pure debt mutual funds only ('+(da.mfCount||0)+' fund'+((da.mfCount||0)===1?'':'s')+'), per the MF Monitor.</div>'+
+        fundBox(da.funds,'Debt',AM.unit&&AM.unit.cap)+
         '<div class="flex"><div class="col">'+dmKpi+'<h4 style="margin:4px 0;">Credit Rating Distribution</h4><div class="chartbox tall"><canvas id="dbRating"></canvas></div></div>'+
         '<div class="col"><h4 style="margin:4px 0;">Top 20 Issuers</h4><table class="cz"><tr><th>Issuer</th><th>% Debt</th></tr>'+iss+'</table></div></div></div>';
     }
