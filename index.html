@@ -585,7 +585,13 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       if (_av==="") return null;
       for (var _ai=0;_ai<candidates.length;_ai++){ if(candidates[_ai]===_av) return _av; }
     }
-    var amcTok = (normalize(amc)[0]||"");
+    /* Brand anchor: the AMC column when the base file supplies one, otherwise
+       the scheme name's own first token. A blank AMC used to mean no anchor at
+       all, which let "IIFL INDIA PRIVATE EQUITY FUND - SERIES 1A" match
+       "3P INDIA EQUITY FUND 1" on india/equity/fund and nothing else. It also
+       restores the exclusion of the house name from `distinct`, so shared
+       tokens have to be more than [house] + [generic]. */
+    var amcTok = (normalize(amc)[0]||nt[0]||"");
     /* An exact name beats any score. Checked before the AMC filter and before
        any token counting: if the normalised names are identical it is the same
        scheme, and no threshold should be able to reject it. This cannot create
