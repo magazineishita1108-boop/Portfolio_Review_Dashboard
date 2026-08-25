@@ -8205,8 +8205,8 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
         '<tr class="taxdet" data-ti="'+gi+'" style="display:none;"><td colspan="8">'+
           '<table class="taxin"><thead><tr><th>Holding</th><th class="n">Units</th>'+
           '<th class="n">First lot</th><th class="n">Latest lot</th>'+
-          '<th class="n">LTCG units</th><th class="n">LTCG '+taxEsc(cap)+'</th><th class="n">LTCG G/L</th>'+
-          '<th class="n">STCG units</th><th class="n">STCG '+taxEsc(cap)+'</th><th class="n">STCG G/L</th><th class="n">Open lots</th></tr></thead>'+
+          '<th class="n">LTCG units</th><th class="n">Amt. available for Rebalancing (LTCG)</th><th class="n">LTCG G/L</th>'+
+          '<th class="n">STCG units</th><th class="n">Amt. available for Rebalancing (STCG)</th><th class="n">STCG G/L</th><th class="n">Open lots</th></tr></thead>'+
           '<tbody>'+inner+'</tbody></table></td></tr>';
     }).join('');
 
@@ -8257,8 +8257,8 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
       '<div class="card"><h3>By Holding</h3>'+
       '<div class="sub">Units and CMV of each holding split by the lots still open under FIFO. &ldquo;Lots&rdquo; is how many separate purchases remain unsold.</div>'+
       '<div style="overflow:auto;"><table class="taxt"><thead><tr><th>Holding</th><th class="n">Units</th>'+
-        '<th class="n">LTCG units</th><th class="n">LTCG '+taxEsc(cap)+'</th><th class="n">LTCG G/L</th>'+
-        '<th class="n">STCG units</th><th class="n">STCG '+taxEsc(cap)+'</th><th class="n">STCG G/L</th><th class="n">Lots</th></tr></thead>'+
+        '<th class="n">LTCG units</th><th class="n">Amt. available for Rebalancing (LTCG)</th><th class="n">LTCG G/L</th>'+
+        '<th class="n">STCG units</th><th class="n">Amt. available for Rebalancing (STCG)</th><th class="n">STCG G/L</th><th class="n">Lots</th></tr></thead>'+
         '<tbody>'+posRows+'</tbody></table></div></div>';
     /* class rows toggle their detail row */
     Array.prototype.forEach.call(s.querySelectorAll('tr.taxg'),function(row){
