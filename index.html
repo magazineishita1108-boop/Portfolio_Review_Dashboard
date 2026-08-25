@@ -8200,12 +8200,23 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
       D.map(function(p,i){ return '<p'+(i?' style="font-size:11px;"':'')+'>'+esc(p)+'</p>'; }).join('')+
       '</div></div>';
   }
+  /* The background is ~713 KB. Written once into a stylesheet rather than into
+     a style attribute on every render — the DOM keeps a class, not the image. */
+  function ensureThankBgCss(){
+    if(document.getElementById('thankbg-css')) return;
+    var bgi=(typeof TOPIC_SLIDES!=='undefined'&&TOPIC_SLIDES.thankbg)?TOPIC_SLIDES.thankbg:'';
+    if(!bgi) return;
+    var st=document.createElement('style'); st.id='thankbg-css';
+    st.textContent='.thank-card.thank-bg{background-image:url("'+bgi+'");background-size:cover;background-position:center;}';
+    document.head.appendChild(st);
+  }
   function renderThank(){
     var s=document.getElementById('s-thank'); if(!s) return;
+    ensureThankBgCss();
     /* the logo is whatever the picker holds — never a baked-in one */
     var lg=(typeof BRAND_LOGO!=='undefined'&&BRAND_LOGO)?BRAND_LOGO:'';
-    var bgi=(typeof TOPIC_SLIDES!=='undefined'&&TOPIC_SLIDES.thankbg)?TOPIC_SLIDES.thankbg:'';
-    s.innerHTML='<div class="card thank-card"'+(bgi?' style="background-image:url('+bgi+');background-size:cover;background-position:center;"':'')+'>'+
+    var hasBg=!!document.getElementById('thankbg-css');
+    s.innerHTML='<div class="card thank-card'+(hasBg?' thank-bg':'')+'">'+
       '<div class="thank-big">THANK YOU</div>'+
       (lg?'<img class="thank-logo" src="'+lg+'" alt="">':'')+
       '</div>';
