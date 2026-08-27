@@ -787,15 +787,12 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
     });
 
     /* ---- classify each base-file position against its lots ---- */
-    var clsTot={};
     rows.forEach(function(h){
       var cmv=h.cmvCr||0; if(!(cmv>0)) return;
-      out.totals.cmv+=cmv;
       /* the base file's own Gain/Loss for this holding — the number the
          LTCG/STCG split must add back to */
       var inv=(h.invCr!=null&&!isNaN(h.invCr))?Number(h.invCr):null;
       var gl=(inv!=null)?(cmv-inv):null;
-      if(gl!=null) out.totals.gl+=gl; else out.totals.glMissing++;
       var cls=taxClassOf(h), rule=cls?byName[cls]:null;
       var _k=K(h.client,h.name);
       var baseU=(h.units!=null&&!isNaN(h.units))?Number(h.units):null;
@@ -810,10 +807,10 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
                cls:cls, cmv:cmv, gl:gl, baseUnits:amtMode?null:baseU, fifoUnits:amtMode?null:fifoU,
                amtMode:amtMode||undefined, lots:L.length};
 
-      if(!cls){ out.unmapped.push(rec); out.totals.unclassCmv+=cmv; if(gl!=null) out.totals.unclassGain+=gl; return; }
+      if(!cls){ out.unmapped.push(rec); return; }
       if(!L.length){ rec.reason=amtMode?"No purchase transactions in the IRR history (this holding has no units, so it is matched on invested value)"
                                    :"No purchase transactions in the IRR history";
-                     out.unreconciled.push(rec); out.totals.unclassCmv+=cmv; if(gl!=null) out.totals.unclassGain+=gl; return; }
+                     out.unreconciled.push(rec); return; }
       /* The base file is authoritative. Small drift is unit-precision rounding
          and the lots are scaled onto it; a real gap means the history is missing
          an event (a bonus or split), and the position is reported, not guessed. */
@@ -822,7 +819,7 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
         rec.reason=amtMode
           ? "Invested value does not reconcile to the base file — the transaction history is incomplete for this holding"
           : "Units do not reconcile to the base file — the transaction history is missing a corporate action (bonus/split) or a purchase";
-        out.unreconciled.push(rec); out.totals.unclassCmv+=cmv; if(gl!=null) out.totals.unclassGain+=gl; return;
+        out.unreconciled.push(rec); return;
       }
       var scale=(baseU!=null&&fifoU>0)?(baseU/fifoU):1;
       var ltU=0, stU=0, unknown=0, oldest=null, newest=null, buckets=[];
@@ -856,39 +853,37 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       rec.ltCmv=ltU*per; rec.stCmv=stU*per; rec.unknownCmv=unknown*per;
       rec.ltGain=ltG; rec.stGain=stG; rec.unknownGain=unkG;
       rec.oldest=oldest; rec.newest=newest; rec.rule=rule;
-      out.totals.ltcgCmv+=rec.ltCmv; out.totals.stcgCmv+=rec.stCmv; out.totals.unclassCmv+=rec.unknownCmv;
-      if(ltG!=null){ out.totals.ltcgGain+=ltG; out.totals.stcgGain+=stG; out.totals.unclassGain+=unkG; }
-      else if(gl!=null){ out.totals.unclassGain+=gl; }  /* no invested value -> gains cannot be split */
       out.positions.push(rec);
-      var g=clsTot[cls]||(clsTot[cls]={cls:cls,rule:rule,cmv:0,ltCmv:0,stCmv:0,gl:0,ltGain:0,stGain:0,n:0,
-                                          ltPos:0,ltNeg:0,stPos:0,stNeg:0});
-      g.cmv+=cmv; g.ltCmv+=rec.ltCmv; g.stCmv+=rec.stCmv; g.n++;
-      if(gl!=null) g.gl+=gl;
-      if(ltG!=null){ g.ltGain+=ltG; g.stGain+=stG;
-        /* pooled at position level: a loss-making holding is a harvest
-           candidate even inside a class that nets positive */
-        if(ltG>0) g.ltPos+=ltG; else g.ltNeg+=-ltG;
-        if(stG>0) g.stPos+=stG; else g.stNeg+=-stG; }
     });
-    out.byClass=Object.keys(clsTot).map(function(k){ return clsTot[k]; })
-      .sort(function(a,b){ return b.cmv-a.cmv; });
+    /* ---- ONE summariser, used for the family and for each client ----
+       Everything below is derived from the classified records, so a client view
+       is the same arithmetic over a subset and the family total is the same
+       arithmetic over all of them. There is no second code path to drift. */
+    function taxRollup(list, keyOf, labelOf){
+      var m={}, order=[];
+      list.forEach(function(r){
+        var k=keyOf(r); if(k==null||k==='') k='(unspecified)';
+        if(!m[k]){ m[k]={key:k, label:labelOf?labelOf(r,k):k, cmv:0, gl:0, ltCmv:0, stCmv:0,
+                          ltGain:0, stGain:0, unclassGain:0, n:0}; order.push(k); }
+        var g=m[k];
+        g.cmv+=r.cmv; g.n++;
+        if(r.gl!=null) g.gl+=r.gl;
+        g.ltCmv+=(r.ltCmv||0); g.stCmv+=(r.stCmv||0);
+        if(r.ltGain!=null){ g.ltGain+=r.ltGain; g.stGain+=r.stGain; g.unclassGain+=(r.unknownGain||0); }
+        else if(r.gl!=null){ g.unclassGain+=r.gl; }
+      });
+      return order.map(function(k){ return m[k]; }).sort(function(a,b){ return b.cmv-a.cmv; });
+    }
 
-    /* ---- TAX HARVESTING ----
-       Short-term losses set against short- then long-term gains; long-term
-       losses against long-term gains only. Applied highest-taxed first, which
-       is the whole point of harvesting. The Rs 1.25 lakh LTCG exemption and
-       cess/surcharge are deliberately outside this — see the tab's footnotes. */
-    out.harvest=(function(){
+    function buildHarvest(byClass, positions){
       var pools=[], ltLoss=0, stLoss=0;
-      out.byClass.forEach(function(g){
+      byClass.forEach(function(g){
         var lr=(g.rule&&g.rule.lt&&g.rule.lt.rate!=null)?g.rule.lt.rate:null;
         var sr=(g.rule&&g.rule.st&&g.rule.st.rate!=null)?g.rule.st.rate:null;
         if(g.ltPos>1e-9) pools.push({b:'LT',cls:g.cls,gross:g.ltPos,left:g.ltPos,rate:lr,label:(g.rule&&g.rule.lt)?g.rule.lt.label:''});
         if(g.stPos>1e-9) pools.push({b:'ST',cls:g.cls,gross:g.stPos,left:g.stPos,rate:sr,label:(g.rule&&g.rule.st)?g.rule.st.label:''});
         ltLoss+=g.ltNeg; stLoss+=g.stNeg;
       });
-      /* highest known rate first; a word-rate pool cannot be quantified so it
-         is offset last — it still absorbs loss, it just yields no number */
       var rank=function(a,b){ return (b.rate==null?-1:b.rate)-(a.rate==null?-1:a.rate); };
       function spend(amount,eligible){
         var pool=amount;
@@ -896,35 +891,90 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
           if(pool<=1e-9) return;
           var take=Math.min(p.left,pool); p.left-=take; pool-=take;
         });
-        return amount-pool;                 /* how much of the loss was usable */
+        return amount-pool;
       }
-      var ltPools=pools.filter(function(p){ return p.b==='LT'; });
-      var usedLt=spend(ltLoss,ltPools);                    /* LT loss -> LT gains only */
-      var usedSt=spend(stLoss,pools);                      /* ST loss -> either head */
-      var taxOf=function(key){ return pools.reduce(function(s,p){
-        return s+((p.rate!=null)?p[key]*p.rate:0); },0); };
+      var usedLt=spend(ltLoss,pools.filter(function(p){ return p.b==='LT'; }));   /* LT loss -> LT gains only */
+      var usedSt=spend(stLoss,pools);                                            /* ST loss -> either head */
+      var taxOf=function(key){ return pools.reduce(function(s,p){ return s+((p.rate!=null)?p[key]*p.rate:0); },0); };
       var before=taxOf('gross'), after=taxOf('left');
       var unquant=pools.filter(function(p){ return p.rate==null; });
       return {
         ltGains:pools.filter(function(p){return p.b==='LT';}).reduce(function(s,p){return s+p.gross;},0),
         stGains:pools.filter(function(p){return p.b==='ST';}).reduce(function(s,p){return s+p.gross;},0),
-        ltLosses:ltLoss, stLosses:stLoss,
-        ltUsed:usedLt, stUsed:usedSt,
+        ltLosses:ltLoss, stLosses:stLoss, ltUsed:usedLt, stUsed:usedSt,
         ltUnused:ltLoss-usedLt, stUnused:stLoss-usedSt,
-        taxBefore:before, taxAfter:after, saving:before-after,
-        pools:pools,
+        taxBefore:before, taxAfter:after, saving:before-after, pools:pools,
         unquantifiedPools:unquant.length,
         unquantifiedGain:unquant.reduce(function(s,p){return s+p.gross;},0),
-        /* the holdings a harvest would actually sell */
-        candidates:out.positions.filter(function(r){
+        candidates:positions.filter(function(r){
             return (r.ltGain!=null&&r.ltGain<0)||(r.stGain!=null&&r.stGain<0); })
           .map(function(r){ return {name:r.name, client:r.client, cls:r.cls, cmv:r.cmv,
             ltLoss:(r.ltGain!=null&&r.ltGain<0)?-r.ltGain:0,
             stLoss:(r.stGain!=null&&r.stGain<0)?-r.stGain:0 }; })
           .sort(function(a,b){ return (b.ltLoss+b.stLoss)-(a.ltLoss+a.stLoss); })
       };
-    })();
-    out.positions.sort(function(a,b){ return b.cmv-a.cmv; });
+    }
+
+    function summarise(pos, unrec, unmap){
+      var t={cmv:0,gl:0,glMissing:0,ltcgCmv:0,stcgCmv:0,unclassCmv:0,ltcgGain:0,stcgGain:0,unclassGain:0};
+      var clsTot={};
+      pos.forEach(function(r){
+        t.cmv+=r.cmv;
+        if(r.gl!=null) t.gl+=r.gl; else t.glMissing++;
+        t.ltcgCmv+=(r.ltCmv||0); t.stcgCmv+=(r.stCmv||0); t.unclassCmv+=(r.unknownCmv||0);
+        if(r.ltGain!=null){ t.ltcgGain+=r.ltGain; t.stcgGain+=r.stGain; t.unclassGain+=(r.unknownGain||0); }
+        else if(r.gl!=null){ t.unclassGain+=r.gl; }
+        var g=clsTot[r.cls]||(clsTot[r.cls]={cls:r.cls,rule:r.rule,cmv:0,ltCmv:0,stCmv:0,gl:0,
+                                             ltGain:0,stGain:0,n:0,ltPos:0,ltNeg:0,stPos:0,stNeg:0});
+        g.cmv+=r.cmv; g.ltCmv+=(r.ltCmv||0); g.stCmv+=(r.stCmv||0); g.n++;
+        if(r.gl!=null) g.gl+=r.gl;
+        if(r.ltGain!=null){ g.ltGain+=r.ltGain; g.stGain+=r.stGain;
+          /* pooled at position level: a loss-making holding is a harvest
+             candidate even inside a class that nets positive */
+          if(r.ltGain>0) g.ltPos+=r.ltGain; else g.ltNeg+=-r.ltGain;
+          if(r.stGain>0) g.stPos+=r.stGain; else g.stNeg+=-r.stGain; }
+      });
+      /* unreconciled and unmapped hold real money — they count toward CMV and
+         Gain/Loss, and all of it sits in the unclassified bucket */
+      unrec.concat(unmap).forEach(function(r){
+        t.cmv+=r.cmv; t.unclassCmv+=r.cmv;
+        if(r.gl!=null){ t.gl+=r.gl; t.unclassGain+=r.gl; } else t.glMissing++;
+      });
+      var byClass=Object.keys(clsTot).map(function(k){ return clsTot[k]; })
+        .sort(function(a,b){ return b.cmv-a.cmv; });
+      var all=pos.concat(unrec,unmap);
+      return {
+        totals:t, byClass:byClass,
+        byProduct:taxRollup(all,function(r){ return r.product||r.pcls||''; }),
+        byAsset:  taxRollup(all,function(r){ return r.asset||''; }),
+        harvest:  buildHarvest(byClass,pos)
+      };
+    }
+
+    var _fam=summarise(out.positions,out.unreconciled,out.unmapped);
+    out.totals=_fam.totals; out.byClass=_fam.byClass;
+    out.byProduct=_fam.byProduct; out.byAsset=_fam.byAsset; out.harvest=_fam.harvest;
+
+    /* per-client views: the same summariser over each client's own records, so
+       the client figures add back to the family figures by construction */
+    var _order=[], _seen={};
+    out.positions.concat(out.unreconciled,out.unmapped).forEach(function(r){
+      var c=r.client||'(unnamed)'; if(!_seen[c]){ _seen[c]=1; _order.push(c); }
+    });
+    var _pick=function(arr,c){ return arr.filter(function(r){ return (r.client||'(unnamed)')===c; }); };
+    out.clients=_order.map(function(c){
+      var p=_pick(out.positions,c), u=_pick(out.unreconciled,c), m=_pick(out.unmapped,c);
+      var s=summarise(p,u,m);
+      return {client:c, positions:p, unreconciled:u, unmapped:m,
+              totals:s.totals, byClass:s.byClass, byProduct:s.byProduct, byAsset:s.byAsset, harvest:s.harvest};
+    }).sort(function(a,b){ return b.totals.cmv-a.totals.cmv; });
+    /* client first, then size — so one person's products sit together even in
+       the family view, which is how the desk reads the sheet */
+    var _byClient=function(a,b){
+      var ca=String(a.client||''), cb=String(b.client||'');
+      return ca<cb?-1:(ca>cb?1:(b.cmv-a.cmv));
+    };
+    out.positions.sort(_byClient);
     out.unreconciled.sort(function(a,b){ return b.cmv-a.cmv; });
     out.unmapped.sort(function(a,b){ return b.cmv-a.cmv; });
     out.hasData=out.positions.length>0||out.unreconciled.length>0||out.unmapped.length>0;
@@ -3410,14 +3460,23 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
     if(!only) (function(){ var d=(typeof DIVIDERS!=="undefined")?DIVIDERS.annexure:""; if(d){ var s=pptx.addSlide(); s.background={color:"FFFFFF"}; s.addImage({data:d,x:0,y:0,w:W,h:Hh,sizing:{type:"contain",w:W,h:Hh}}); stampLogo(s); } })();
     /* ---- TAXATION (long/short split + harvesting) ---- */
     if(SHOW('tax') && model.taxation && model.taxation.hasData) (function(){
-      var T=model.taxation, U=model.unit, t=T.totals;
+      /* the deck exports whatever scope the tab is showing */
+      var _all=model.taxation, _sc=null;
+      try{ _sc=(typeof window!=='undefined')?window.__taxScope:null; }catch(e){}
+      var _cv=_sc?((_all.clients||[]).filter(function(x){return x.client===_sc;})[0]):null;
+      var T=_cv?{hasData:true,asOn:_all.asOn,txnCount:_all.txnCount,positions:_cv.positions,
+                 unreconciled:_cv.unreconciled,unmapped:_cv.unmapped,totals:_cv.totals,
+                 byClass:_cv.byClass,byProduct:_cv.byProduct,byAsset:_cv.byAsset,harvest:_cv.harvest}
+               :_all;
+      var _scopeTag=_sc?(' \u2014 '+_sc):'';
+      var U=model.unit, t=T.totals;
       var gm=function(v){ return (v==null||isNaN(v))?'\u2014':U.m(v); };
       var rt=function(o){ return (!o)?'\u2014':(o.rate!=null?(o.rate*100).toFixed(o.rate*100%1?2:0)+'%':(o.label||'\u2014')); };
       var asOn=(T.asOn instanceof Date)
         ? (T.asOn.getUTCDate()+' '+["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][T.asOn.getUTCMonth()]+' '+T.asOn.getUTCFullYear())
         : model.meta.asOnDate;
 
-      var s=base("Taxation \u2014 Long Term vs Short Term");
+      var s=base("Taxation \u2014 Long Term vs Short Term"+_scopeTag);
       var kx=0.18, kw=4.28, kg=0.14;
       kpi(s,kx,1.06,kw,gm(t.ltcgGain),"LTCG Gain/Loss (on "+U.m(t.ltcgCmv)+" long term)");
       kpi(s,kx+kw+kg,1.06,kw,gm(t.stcgGain),"STCG Gain/Loss (on "+U.m(t.stcgCmv)+" short term)");
@@ -3446,11 +3505,14 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
          Rows per page are derived from the usable band and the row height, so
          a new class or holding re-paginates instead of overflowing. */
       (function(){
-        var TX_ROW=0.30, TX_TOP=1.30, TX_BOT=6.86;
-        var PER=Math.max(6, Math.floor((TX_BOT-TX_TOP)/TX_ROW)-1);   /* -1 for the repeated header */
-        var head=["Holding","Units","First lot","Latest lot","LTCG units","Amt. avail. (LTCG)","LTCG G/L",
+        /* rowH is a MINIMUM in PptxGenJS — a wrapped holding name renders taller,
+           so pagination uses a worst-case height and stops short of the footnote
+           rather than dividing the band by the nominal row. */
+        var TX_ROW=0.28, TX_WORST=0.42, TX_TOP=1.30, TX_BOT=6.45;
+        var PER=Math.max(6, Math.floor((TX_BOT-TX_TOP)/TX_WORST)-1);   /* -1 for the repeated header */
+        var head=["Holding","Client","Units","First lot","Latest lot","LTCG units","Amt. avail. (LTCG)","LTCG G/L",
                   "STCG units","Amt. avail. (STCG)","STCG G/L","Lots"];
-        var colW=[3.30,1.00,0.95,0.95,1.05,1.15,0.95,1.05,1.15,0.95,0.50];
+        var colW=[2.70,1.15,0.92,0.82,0.82,0.98,1.08,0.90,0.98,1.08,0.90,0.67];
         var mon=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
         var dt=function(d){ return (d instanceof Date)?(d.getUTCDate()+'-'+mon[d.getUTCMonth()]+'-'+String(d.getUTCFullYear()).slice(2)):'\u2014'; };
         var un=function(v){ return (v==null||isNaN(v))?'\u2014':Number(v).toLocaleString('en-IN',{maximumFractionDigits:2}); };
@@ -3466,18 +3528,19 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
         var pages=Math.ceil(flat.length/PER);
         for(var pg=0; pg<pages; pg++){
           var slice=flat.slice(pg*PER,(pg+1)*PER);
-          var sd=base("Taxation \u2014 Holding Detail"+(pages>1?(' ('+(pg+1)+'/'+pages+')'):''));
+          var sd=base("Taxation \u2014 Holding Detail"+_scopeTag+(pages>1?(' ('+(pg+1)+'/'+pages+')'):''));
           var rows=[head.map(function(h,i){ return cell(h,{bold:true,color:"FFFFFF",fill:C.black,fontSize:7,align:i?'center':'left'}); })];
           slice.forEach(function(it){
             if(it.banner){
               var g=it.banner;
               var b=[cell(g.cls+'  \u2014  '+g.n+' holding'+(g.n===1?'':'s'),{bold:true,fontSize:7,fill:'DBC8B2',align:'left'})];
-              for(var z=1;z<head.length;z++) b.push(cell(z===head.length-1?'':'',{fill:'DBC8B2',fontSize:7}));
+              for(var z=1;z<head.length;z++) b.push(cell('',{fill:'DBC8B2',fontSize:7}));
               rows.push(b); return;
             }
             var r=it.rec;
             rows.push([
-              cell(r.name+'\n'+r.client,{align:'left',fontSize:6.5}),
+              cell(r.name,{align:'left',fontSize:6.5}),
+              cell(r.client,{align:'left',fontSize:6.5}),
               cell(r.amtMode?'\u2014':un(r.baseUnits),{align:'right',fontSize:7}),
               cell(dt(r.oldest),{align:'center',fontSize:7}),
               cell(dt(r.newest),{align:'center',fontSize:7}),
@@ -3499,7 +3562,7 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
 
       var H=T.harvest;
       if(H && (H.ltLosses>1e-9 || H.stLosses>1e-9 || H.taxBefore>1e-9)){
-        var s2=base("Tax Harvesting");
+        var s2=base("Tax Harvesting"+_scopeTag);
         kpi(s2,kx,1.06,kw,U.m(H.taxBefore),"Estimated tax before harvesting");
         kpi(s2,kx+kw+kg,1.06,kw,U.m(H.taxAfter),"After setting off available losses");
         kpi(s2,kx+(kw+kg)*2,1.06,kw,U.m(H.saving),"Estimated tax saved");
@@ -3530,16 +3593,17 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
 
         /* the positions a harvest would actually sell */
         if(H.candidates && H.candidates.length){
-          var CROW=0.30, CTOP=1.30, CBOT=6.86;
-          var CPER=Math.max(6, Math.floor((CBOT-CTOP)/CROW)-1);
+          var CROW=0.28, CWORST=0.42, CTOP=1.30, CBOT=6.45;
+          var CPER=Math.max(6, Math.floor((CBOT-CTOP)/CWORST)-1);
           var cpages=Math.ceil(H.candidates.length/CPER);
           for(var cp=0; cp<cpages; cp++){
-            var cs=base("Tax Harvesting \u2014 Holdings at a Loss"+(cpages>1?(' ('+(cp+1)+'/'+cpages+')'):''));
-            var ch=["Holding","Tax class","CMV","Long-term loss","Short-term loss","Total loss"];
+            var cs=base("Tax Harvesting \u2014 Holdings at a Loss"+_scopeTag+(cpages>1?(' ('+(cp+1)+'/'+cpages+')'):''));
+            var ch=["Holding","Client","Tax class","CMV","Long-term loss","Short-term loss","Total loss"];
             var cr=[ch.map(function(h,i){ return cell(h,{bold:true,color:"FFFFFF",fill:C.black,fontSize:8,align:i?'center':'left'}); })];
             H.candidates.slice(cp*CPER,(cp+1)*CPER).forEach(function(c){
               cr.push([
-                cell(c.name+'\n'+c.client,{align:'left',fontSize:7}),
+                cell(c.name,{align:'left',fontSize:7}),
+                cell(c.client,{align:'left',fontSize:7}),
                 cell(c.cls,{align:'left',fontSize:7.5}),
                 cell(U.m(c.cmv),{align:'right',fontSize:7.5}),
                 cell(c.ltLoss>0?U.m(c.ltLoss):'\u2014',{align:'right',fontSize:7.5,color:(c.ltLoss>0?C.red:'000000')}),
@@ -3547,7 +3611,7 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
                 cell(U.m(c.ltLoss+c.stLoss),{align:'right',fontSize:7.5,bold:true,color:C.red})
               ]);
             });
-            cs.addTable(cr,{x:0.18,y:CTOP,w:13.0,colW:[4.30,2.90,1.60,1.45,1.45,1.30],rowH:CROW,fontFace:F,
+            cs.addTable(cr,{x:0.18,y:CTOP,w:13.0,colW:[3.55,1.55,2.35,1.45,1.40,1.40,1.30],rowH:CROW,fontFace:F,
               border:{type:'solid',pt:0.3,color:'D9D9D9'},valign:'middle'});
             foot(cs,'Largest loss first. A short-term loss may be set against both short- and long-term gains; a long-term loss only against long-term gains. '+
               'Selling is a decision for the adviser \u2014 this slide lists what is available, not a recommendation.');
@@ -8343,8 +8407,23 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
       'table.taxin{width:100%;border-collapse:collapse;font-family:Cambria,serif;font-size:11px;margin-top:6px;}'+
       'table.taxin th{background:#5C3E17;color:#FFFFFF;text-align:left;padding:4px 7px;font-weight:bold;}'+
       'table.taxin td{border-bottom:1px solid #D9D9D9;padding:4px 7px;vertical-align:top;}'+
-      'table.taxin td.n,table.taxin th.n{text-align:right;white-space:nowrap;}';
+      'table.taxin td.n,table.taxin th.n{text-align:right;white-space:nowrap;}'+
+      '.taxscope{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 12px;}'+
+      '.taxscope button{font-family:Cambria,serif;font-size:12px;padding:5px 13px;border-radius:16px;'+
+        'border:1px solid #BD9568;background:#FFFFFF;color:#000000;cursor:pointer;line-height:1.25;}'+
+      '.taxscope button.on{background:#BD9568;color:#FFFFFF;font-weight:bold;}';
     document.head.appendChild(st);
+  }
+  /* null = Family Level; otherwise the client name. Module-level so it survives
+     the re-render the scope buttons trigger, and readable by the exporter. */
+  var taxScope=null;
+  function taxView(T){
+    if(!taxScope) return T;
+    var c=(T.clients||[]).filter(function(x){ return x.client===taxScope; })[0];
+    return c ? {hasData:true, asOn:T.asOn, txnCount:T.txnCount, noPrice:T.noPrice,
+                positions:c.positions, unreconciled:c.unreconciled, unmapped:c.unmapped,
+                totals:c.totals, byClass:c.byClass, byProduct:c.byProduct, byAsset:c.byAsset,
+                harvest:c.harvest, clients:T.clients} : T;
   }
   function taxEsc(s){ return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
   function taxRate(o){ if(!o) return '—'; return o.rate!=null ? (o.rate*100).toFixed(o.rate*100%1?2:0)+'%' : taxEsc(o.label||'—'); }
@@ -8356,7 +8435,10 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
     taxCss();
     var s=document.getElementById('s-tax'); if(!s) return;
     if(!model){ s.innerHTML='<div class="card"><p style="font-family:Cambria,serif;font-size:13px;color:#888;">Upload a base file to view Taxation.</p></div>'; return; }
-    var T=model.taxation||{hasData:false};
+    var TALL=model.taxation||{hasData:false};
+    var T=taxView(TALL);
+    /* the deck exports whatever scope is on screen */
+    try{ window.__taxScope=taxScope; }catch(e){}
     var U=model.unit, cap=(U&&U.cap)||'Cr';
     if(T.error){
       s.innerHTML=dlBarSafe()+'<div class="card"><h3>Taxation</h3><div class="taxwarn">Taxation could not be computed: '+taxEsc(T.error)+'</div></div>'; return;
@@ -8394,7 +8476,8 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
         /* amtMode unit fields hold rupees — a number under a "units" heading
            would be wrong, so those cells say why instead */
         var uCell=r.amtMode?'—<span class="taxsub">matched on invested value</span>':taxU(r.baseUnits);
-        return '<tr><td>'+taxEsc(r.name)+'<span class="taxsub">'+taxEsc(r.client)+' &middot; '+taxEsc(r.category||r.product)+'</span></td>'+
+        return '<tr><td>'+taxEsc(r.name)+'<span class="taxsub">'+taxEsc(r.category||r.product)+'</span></td>'+
+          '<td>'+taxEsc(r.client)+'</td>'+
           '<td class="n">'+uCell+'</td>'+
           '<td class="n">'+taxD(r.oldest)+'</td><td class="n">'+taxD(r.newest)+'</td>'+
           '<td class="n">'+(r.amtMode?'—':taxU(r.ltUnits))+'</td><td class="n">'+U.m(r.ltCmv)+'</td><td class="n"'+gcol(r.ltGain)+'>'+gm(r.ltGain)+'</td>'+
@@ -8409,7 +8492,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
         '<td class="n"'+gcol(g.ltGain)+'>'+gm(g.ltGain)+'</td><td class="n"'+gcol(g.stGain)+'>'+gm(g.stGain)+'</td>'+
         '<td class="n"'+gcol(g.gl)+'>'+gm(g.gl)+'</td><td class="n">'+U.m(g.cmv)+'</td></tr>'+
         '<tr class="taxdet" data-ti="'+gi+'" style="display:none;"><td colspan="8">'+
-          '<table class="taxin"><thead><tr><th>Holding</th><th class="n">Units</th>'+
+          '<table class="taxin"><thead><tr><th>Holding</th><th>Client</th><th class="n">Units</th>'+
           '<th class="n">First lot</th><th class="n">Latest lot</th>'+
           '<th class="n">LTCG units</th><th class="n">Amt. available for Rebalancing (LTCG)</th><th class="n">LTCG G/L</th>'+
           '<th class="n">STCG units</th><th class="n">Amt. available for Rebalancing (STCG)</th><th class="n">STCG G/L</th><th class="n">Open lots</th></tr></thead>'+
@@ -8418,7 +8501,8 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
 
     /* per holding */
     var posRows=T.positions.map(function(r){
-      return '<tr><td>'+taxEsc(r.name)+'<span class="taxsub">'+taxEsc(r.client)+' &middot; '+taxEsc(r.cls)+'</span></td>'+
+      return '<tr><td>'+taxEsc(r.name)+'<span class="taxsub">'+taxEsc(r.cls)+'</span></td>'+
+        '<td>'+taxEsc(r.client)+'</td>'+
         '<td class="n">'+(r.amtMode?'\u2014':taxU(r.baseUnits))+'</td>'+
         '<td class="n">'+(r.amtMode?'\u2014':taxU(r.ltUnits))+'</td><td class="n">'+U.m(r.ltCmv)+'</td><td class="n"'+gcol(r.ltGain)+'>'+gm(r.ltGain)+'</td>'+
         '<td class="n">'+(r.amtMode?'\u2014':taxU(r.stUnits))+'</td><td class="n">'+U.m(r.stCmv)+'</td><td class="n"'+gcol(r.stGain)+'>'+gm(r.stGain)+'</td>'+
@@ -8443,6 +8527,45 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
         T.unmapped.map(function(r){ return '<tr><td>'+taxEsc(r.name)+'<span class="taxsub">'+taxEsc(r.client)+'</span></td><td>'+taxEsc(r.product)+'</td><td>'+taxEsc(r.category)+'</td><td class="n">'+U.m(r.cmv)+'</td><td class="n"'+gcol(r.gl)+'>'+gm(r.gl)+'</td></tr>'; }).join('')+
         '</tbody></table></div>';
     }
+
+    /* ---- scope strip: Family Level, then each client ---- */
+    var scopeStrip='';
+    if((TALL.clients||[]).length>1){
+      scopeStrip='<div class="taxscope">'+
+        '<button type="button" data-sc="" class="'+(taxScope?'':'on')+'">Family Level</button>'+
+        TALL.clients.map(function(c){
+          return '<button type="button" data-sc="'+taxEsc(c.client)+'" class="'+(taxScope===c.client?'on':'')+'">'+
+            taxEsc(c.client)+' &middot; '+U.m(c.totals.cmv)+'</button>';
+        }).join('')+'</div>';
+    }
+    /* ---- roll-ups: product, asset, and the grand total for this scope ---- */
+    var rollTbl=function(title,arr){
+      if(!arr||!arr.length) return '';
+      var body=arr.map(function(g){
+        return '<tr><td>'+taxEsc(g.label||g.key)+'<span class="taxsub">'+g.n+' holding'+(g.n===1?'':'s')+'</span></td>'+
+          '<td class="n">'+U.m(g.cmv)+'</td>'+
+          '<td class="n"'+gcol(g.ltGain)+'>'+gm(g.ltGain)+'</td>'+
+          '<td class="n"'+gcol(g.stGain)+'>'+gm(g.stGain)+'</td>'+
+          '<td class="n"'+gcol(g.unclassGain)+'>'+gm(g.unclassGain)+'</td>'+
+          '<td class="n"'+gcol(g.gl)+'>'+gm(g.gl)+'</td></tr>';
+      }).join('');
+      return '<div style="flex:1;min-width:330px;"><h4 style="margin:14px 0 4px;">'+title+'</h4>'+
+        '<div style="overflow:auto;"><table class="taxt"><thead><tr><th>'+title.replace(/^By /,'')+'</th>'+
+        '<th class="n">CMV</th><th class="n">LTCG G/L</th><th class="n">STCG G/L</th>'+
+        '<th class="n">Unclassified</th><th class="n">Total G/L</th></tr></thead><tbody>'+body+'</tbody></table></div></div>';
+    };
+    var scopeLabel=taxScope?taxEsc(taxScope):'Family';
+    var rollups='<div style="display:flex;gap:14px;flex-wrap:wrap;">'+
+      rollTbl('By product',T.byProduct)+rollTbl('By asset class',T.byAsset)+'</div>'+
+      '<div style="overflow:auto;margin-top:12px;"><table class="taxt"><thead><tr>'+
+        '<th>Grand total &mdash; '+scopeLabel+'</th><th class="n">CMV</th><th class="n">LTCG G/L</th>'+
+        '<th class="n">STCG G/L</th><th class="n">Unclassified</th><th class="n">Total G/L</th></tr></thead>'+
+        '<tbody><tr class="taxg" style="cursor:default;"><td>'+(T.positions.length+T.unreconciled.length+T.unmapped.length)+' holdings</td>'+
+        '<td class="n">'+U.m(t.cmv)+'</td>'+
+        '<td class="n"'+gcol(t.ltcgGain)+'>'+gm(t.ltcgGain)+'</td>'+
+        '<td class="n"'+gcol(t.stcgGain)+'>'+gm(t.stcgGain)+'</td>'+
+        '<td class="n"'+gcol(t.unclassGain)+'>'+gm(t.unclassGain)+'</td>'+
+        '<td class="n"'+gcol(t.gl)+'>'+gm(t.gl)+'</td></tr></tbody></table></div>';
 
     /* ---- tax harvesting ---- */
     var H=T.harvest||null, harvestHtml='';
@@ -8505,7 +8628,9 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
         'Each buy in the IRR sheet opens a lot of |amount| &divide; price units on its own date; each sell consumes the oldest open lots first (FIFO), and the lots left over are the current holding &mdash; &ldquo;Open lots&rdquo; counts them. '+
         'A lot&rsquo;s gain is its value at the base file&rsquo;s NAV minus its own purchase cost, with costs scaled to the base file&rsquo;s invested value, so LTCG + STCG Gain/Loss adds back to each holding&rsquo;s total Gain/Loss exactly. '+
         'Rates shown as words (Slab rate, Fund-level) are stated that way in the tax-rules file and depend on the assessee or the fund&rsquo;s own filing.</div>'+
+      scopeStrip+
       kpi+
+      rollups+
       '<h4 style="margin:14px 0 4px;">By tax class</h4>'+
       '<div style="overflow:auto;"><table class="taxt"><thead><tr><th>Tax class</th><th>Long term after</th>'+
         '<th class="n">LTCG rate</th><th class="n">STCG rate</th><th class="n">LTCG G/L</th><th class="n">STCG G/L</th><th class="n">Total G/L</th><th class="n">CMV '+taxEsc(cap)+'</th></tr></thead>'+
@@ -8518,10 +8643,14 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
       harvestHtml+
       '<div class="card"><h3>By Holding</h3>'+
       '<div class="sub">Units and CMV of each holding split by the lots still open under FIFO. &ldquo;Lots&rdquo; is how many separate purchases remain unsold.</div>'+
-      '<div style="overflow:auto;"><table class="taxt"><thead><tr><th>Holding</th><th class="n">Units</th>'+
+      '<div style="overflow:auto;"><table class="taxt"><thead><tr><th>Holding</th><th>Client</th><th class="n">Units</th>'+
         '<th class="n">LTCG units</th><th class="n">Amt. available for Rebalancing (LTCG)</th><th class="n">LTCG G/L</th>'+
         '<th class="n">STCG units</th><th class="n">Amt. available for Rebalancing (STCG)</th><th class="n">STCG G/L</th><th class="n">Lots</th></tr></thead>'+
         '<tbody>'+posRows+'</tbody></table></div></div>';
+    /* scope strip */
+    Array.prototype.forEach.call(s.querySelectorAll('.taxscope button'),function(b){
+      b.onclick=function(){ taxScope=b.getAttribute('data-sc')||null; renderTaxation(); };
+    });
     /* class rows toggle their detail row */
     Array.prototype.forEach.call(s.querySelectorAll('tr.taxg'),function(row){
       row.onclick=function(){
