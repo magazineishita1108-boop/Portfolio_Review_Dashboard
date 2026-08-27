@@ -860,13 +860,70 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       if(ltG!=null){ out.totals.ltcgGain+=ltG; out.totals.stcgGain+=stG; out.totals.unclassGain+=unkG; }
       else if(gl!=null){ out.totals.unclassGain+=gl; }  /* no invested value -> gains cannot be split */
       out.positions.push(rec);
-      var g=clsTot[cls]||(clsTot[cls]={cls:cls,rule:rule,cmv:0,ltCmv:0,stCmv:0,gl:0,ltGain:0,stGain:0,n:0});
+      var g=clsTot[cls]||(clsTot[cls]={cls:cls,rule:rule,cmv:0,ltCmv:0,stCmv:0,gl:0,ltGain:0,stGain:0,n:0,
+                                          ltPos:0,ltNeg:0,stPos:0,stNeg:0});
       g.cmv+=cmv; g.ltCmv+=rec.ltCmv; g.stCmv+=rec.stCmv; g.n++;
       if(gl!=null) g.gl+=gl;
-      if(ltG!=null){ g.ltGain+=ltG; g.stGain+=stG; }
+      if(ltG!=null){ g.ltGain+=ltG; g.stGain+=stG;
+        /* pooled at position level: a loss-making holding is a harvest
+           candidate even inside a class that nets positive */
+        if(ltG>0) g.ltPos+=ltG; else g.ltNeg+=-ltG;
+        if(stG>0) g.stPos+=stG; else g.stNeg+=-stG; }
     });
     out.byClass=Object.keys(clsTot).map(function(k){ return clsTot[k]; })
       .sort(function(a,b){ return b.cmv-a.cmv; });
+
+    /* ---- TAX HARVESTING ----
+       Short-term losses set against short- then long-term gains; long-term
+       losses against long-term gains only. Applied highest-taxed first, which
+       is the whole point of harvesting. The Rs 1.25 lakh LTCG exemption and
+       cess/surcharge are deliberately outside this — see the tab's footnotes. */
+    out.harvest=(function(){
+      var pools=[], ltLoss=0, stLoss=0;
+      out.byClass.forEach(function(g){
+        var lr=(g.rule&&g.rule.lt&&g.rule.lt.rate!=null)?g.rule.lt.rate:null;
+        var sr=(g.rule&&g.rule.st&&g.rule.st.rate!=null)?g.rule.st.rate:null;
+        if(g.ltPos>1e-9) pools.push({b:'LT',cls:g.cls,gross:g.ltPos,left:g.ltPos,rate:lr,label:(g.rule&&g.rule.lt)?g.rule.lt.label:''});
+        if(g.stPos>1e-9) pools.push({b:'ST',cls:g.cls,gross:g.stPos,left:g.stPos,rate:sr,label:(g.rule&&g.rule.st)?g.rule.st.label:''});
+        ltLoss+=g.ltNeg; stLoss+=g.stNeg;
+      });
+      /* highest known rate first; a word-rate pool cannot be quantified so it
+         is offset last — it still absorbs loss, it just yields no number */
+      var rank=function(a,b){ return (b.rate==null?-1:b.rate)-(a.rate==null?-1:a.rate); };
+      function spend(amount,eligible){
+        var pool=amount;
+        eligible.slice().sort(rank).forEach(function(p){
+          if(pool<=1e-9) return;
+          var take=Math.min(p.left,pool); p.left-=take; pool-=take;
+        });
+        return amount-pool;                 /* how much of the loss was usable */
+      }
+      var ltPools=pools.filter(function(p){ return p.b==='LT'; });
+      var usedLt=spend(ltLoss,ltPools);                    /* LT loss -> LT gains only */
+      var usedSt=spend(stLoss,pools);                      /* ST loss -> either head */
+      var taxOf=function(key){ return pools.reduce(function(s,p){
+        return s+((p.rate!=null)?p[key]*p.rate:0); },0); };
+      var before=taxOf('gross'), after=taxOf('left');
+      var unquant=pools.filter(function(p){ return p.rate==null; });
+      return {
+        ltGains:pools.filter(function(p){return p.b==='LT';}).reduce(function(s,p){return s+p.gross;},0),
+        stGains:pools.filter(function(p){return p.b==='ST';}).reduce(function(s,p){return s+p.gross;},0),
+        ltLosses:ltLoss, stLosses:stLoss,
+        ltUsed:usedLt, stUsed:usedSt,
+        ltUnused:ltLoss-usedLt, stUnused:stLoss-usedSt,
+        taxBefore:before, taxAfter:after, saving:before-after,
+        pools:pools,
+        unquantifiedPools:unquant.length,
+        unquantifiedGain:unquant.reduce(function(s,p){return s+p.gross;},0),
+        /* the holdings a harvest would actually sell */
+        candidates:out.positions.filter(function(r){
+            return (r.ltGain!=null&&r.ltGain<0)||(r.stGain!=null&&r.stGain<0); })
+          .map(function(r){ return {name:r.name, client:r.client, cls:r.cls, cmv:r.cmv,
+            ltLoss:(r.ltGain!=null&&r.ltGain<0)?-r.ltGain:0,
+            stLoss:(r.stGain!=null&&r.stGain<0)?-r.stGain:0 }; })
+          .sort(function(a,b){ return (b.ltLoss+b.stLoss)-(a.ltLoss+a.stLoss); })
+      };
+    })();
     out.positions.sort(function(a,b){ return b.cmv-a.cmv; });
     out.unreconciled.sort(function(a,b){ return b.cmv-a.cmv; });
     out.unmapped.sort(function(a,b){ return b.cmv-a.cmv; });
@@ -8238,6 +8295,61 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
         '</tbody></table></div>';
     }
 
+    /* ---- tax harvesting ---- */
+    var H=T.harvest||null, harvestHtml='';
+    if(H && (H.ltLosses>1e-9 || H.stLosses>1e-9 || H.taxBefore>1e-9)){
+      var poolRows=H.pools.slice().sort(function(a,b){ return b.gross-a.gross; }).map(function(p){
+        var used=p.gross-p.left;
+        return '<tr><td>'+taxEsc(p.cls)+'<span class="taxsub">'+(p.b==='LT'?'Long term':'Short term')+'</span></td>'+
+          '<td class="n">'+(p.rate!=null?(p.rate*100).toFixed(p.rate*100%1?2:0)+'%':taxEsc(p.label||'\u2014'))+'</td>'+
+          '<td class="n">'+U.m(p.gross)+'</td>'+
+          '<td class="n">'+(used>1e-9?'-'+U.m(used):'\u2014')+'</td>'+
+          '<td class="n">'+U.m(p.left)+'</td>'+
+          '<td class="n">'+(p.rate!=null?U.m(p.left*p.rate):taxEsc(p.label||'\u2014'))+'</td></tr>';
+      }).join('');
+      var unusedNote='';
+      if(H.ltUnused>1e-9||H.stUnused>1e-9){
+        unusedNote='<div class="taxwarn" style="margin-top:10px;">'+
+          U.m(H.ltUnused+H.stUnused)+' of losses cannot be absorbed by this year&rsquo;s gains'+
+          (H.ltUnused>1e-9?' ('+U.m(H.ltUnused)+' long term, which can only be set against long-term gains)':'')+
+          '. Unabsorbed losses carry forward eight assessment years if the return is filed on time.</div>';
+      }
+      var candRows=H.candidates.slice(0,25).map(function(c){
+        return '<tr><td>'+taxEsc(c.name)+'<span class="taxsub">'+taxEsc(c.client)+' &middot; '+taxEsc(c.cls)+'</span></td>'+
+          '<td class="n">'+U.m(c.cmv)+'</td>'+
+          '<td class="n"'+(c.ltLoss>0?' style="color:#931621;"':'')+'>'+(c.ltLoss>0?U.m(c.ltLoss):'\u2014')+'</td>'+
+          '<td class="n"'+(c.stLoss>0?' style="color:#931621;"':'')+'>'+(c.stLoss>0?U.m(c.stLoss):'\u2014')+'</td></tr>';
+      }).join('');
+      harvestHtml='<div class="card"><h3>Tax Harvesting</h3>'+
+        '<div class="sub">If the book were liquidated today. A short-term loss may be set against both short- and long-term gains; a long-term loss only against long-term gains. '+
+          'Losses are applied to the highest-taxed gains first, which is what maximises the saving.</div>'+
+        '<div style="display:flex;gap:10px;margin:2px 0 14px;">'+
+          '<div class="taxkpi"><div class="v">'+U.m(H.taxBefore)+'</div><div class="l">Estimated tax before harvesting</div></div>'+
+          '<div class="taxkpi"><div class="v">'+U.m(H.taxAfter)+'</div><div class="l">After setting off available losses</div></div>'+
+          '<div class="taxkpi" style="background:#BD9568;"><div class="v" style="color:#FFFFFF;">'+U.m(H.saving)+'</div><div class="l" style="color:#FFF8E1;">Estimated tax saved</div></div>'+
+        '</div>'+
+        '<div style="overflow:auto;"><table class="taxt"><thead><tr><th>Gain pool</th><th class="n">Rate</th>'+
+          '<th class="n">Gain</th><th class="n">Loss set off</th><th class="n">Taxable after</th><th class="n">Tax after</th></tr></thead>'+
+          '<tbody>'+poolRows+'</tbody>'+
+          '<tfoot><tr><td colspan="2">Losses available &mdash; '+U.m(H.ltLosses)+' long term, '+U.m(H.stLosses)+' short term</td>'+
+          '<td class="n">'+U.m(H.ltGains+H.stGains)+'</td><td class="n">-'+U.m(H.ltUsed+H.stUsed)+'</td>'+
+          '<td class="n">'+U.m(H.ltGains+H.stGains-H.ltUsed-H.stUsed)+'</td><td class="n">'+U.m(H.taxAfter)+'</td></tr></tfoot>'+
+          '</table></div>'+
+        unusedNote+
+        (H.unquantifiedPools?'<div class="taxwarn" style="margin-top:10px;">'+H.unquantifiedPools+' gain pool'+(H.unquantifiedPools===1?'':'s')+
+          ' totalling '+U.m(H.unquantifiedGain)+' carry a rate the rules state as a word (Slab rate, Fund-level), so no tax figure is computed for '+
+          (H.unquantifiedPools===1?'it':'them')+'. The tax and saving above are therefore a floor, not the whole book.</div>':'')+
+        (candRows?('<h4 style="margin:14px 0 4px;">Holdings sitting at a loss</h4>'+
+          '<div class="sub">The positions a harvest would sell, largest loss first'+(H.candidates.length>25?' &mdash; top 25 of '+H.candidates.length:'')+'.</div>'+
+          '<div style="overflow:auto;"><table class="taxt"><thead><tr><th>Holding</th><th class="n">CMV '+taxEsc(cap)+'</th>'+
+          '<th class="n">Long-term loss</th><th class="n">Short-term loss</th></tr></thead><tbody>'+candRows+'</tbody></table></div>')
+         :'<div class="sub" style="margin-top:10px;">No holding is currently at a loss, so there is nothing to harvest.</div>')+
+        '<div style="font-family:Cambria,serif;font-size:10.5px;color:#5C3E17;margin-top:12px;line-height:1.5;">'+
+          '* Rate of 12.5% to be levied on long-term capital gains exceeding Rs. 1.25 lakh provided Securities Transaction Tax (&lsquo;STT&rsquo;) is paid on transfer of such units.<br>'+
+          '** Tax implication excludes cess &amp; surcharge'+
+        '</div>'+
+        '</div>';
+    }
     s.innerHTML=dlBarSafe()+
       '<div class="card"><h3>Taxation &mdash; Long Term vs Short Term</h3>'+
       '<div class="sub">Holding periods measured to '+taxEsc(asOn)+' from each lot&rsquo;s own purchase date, using FIFO over '+T.txnCount+' transactions in the IRR sheet. '+
@@ -8254,6 +8366,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
         '</table></div>'+
       warn+
       '</div>'+
+      harvestHtml+
       '<div class="card"><h3>By Holding</h3>'+
       '<div class="sub">Units and CMV of each holding split by the lots still open under FIFO. &ldquo;Lots&rdquo; is how many separate purchases remain unsold.</div>'+
       '<div style="overflow:auto;"><table class="taxt"><thead><tr><th>Holding</th><th class="n">Units</th>'+
