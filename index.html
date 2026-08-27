@@ -3561,8 +3561,9 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
         /* rowH is a MINIMUM in PptxGenJS — a wrapped holding name renders taller,
            so pagination uses a worst-case height and stops short of the footnote
            rather than dividing the band by the nominal row. */
-        var TX_ROW=0.28, TX_WORST=0.42, TX_TOP=1.30, TX_BOT=6.45;
-        var PER=Math.max(6, Math.floor((TX_BOT-TX_TOP)/TX_WORST)-1);   /* -1 for the repeated header */
+        var TX_ROW=0.28, TX_WORST=0.34, TX_TOP=1.30, TX_BOT=6.72;
+        /* -3: header, the carry-over class banner, and the grand-total row */
+        var PER=Math.max(6, Math.floor((TX_BOT-TX_TOP)/TX_WORST)-3);
         var head=["Holding","Client","Units","First lot","Latest lot","LTCG units","Amt. avail. (LTCG)","LTCG G/L",
                   "STCG units","Amt. avail. (STCG)","STCG G/L","Lots"];
         var colW=[2.70,1.15,0.92,0.82,0.82,0.98,1.08,0.90,0.98,1.08,0.90,0.67];
@@ -3578,18 +3579,64 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
           kids.forEach(function(r){ flat.push({rec:r}); });
         });
         if(!flat.length) return;
+        /* lot counts per class, and across the whole scope */
+        var _lots={}, GLOTS=0;
+        T.positions.forEach(function(r){ _lots[r.cls]=(_lots[r.cls]||0)+(r.lots||0); GLOTS+=(r.lots||0); });
+        var byCls=function(c){ return {lots:_lots[c]||0}; };
+        /* one banner builder, used for a class's own row and for the copy that
+           heads a page the class carries over onto */
+        var bannerRow=function(g,tag){
+          var bo={bold:true,fontSize:7,fill:'DBC8B2'};
+          /* unit columns stay blank: units of different schemes do not add */
+          return [
+            cell(g.cls+'  \u2014  '+g.n+' holding'+(g.n===1?'':'s')+(tag?('  '+tag):''),
+                 {bold:true,fontSize:7,fill:'DBC8B2',align:'left'}),
+            cell('',bo), cell('',bo), cell('',bo), cell('',bo), cell('',bo),
+            cell(U.m(g.ltCmv),{bold:true,fontSize:7,fill:'DBC8B2',align:'right'}),
+            cell(gm(g.ltGain),{bold:true,fontSize:7,fill:'DBC8B2',align:'right',color:(g.ltGain<0?C.red:'000000')}),
+            cell('',bo),
+            cell(U.m(g.stCmv),{bold:true,fontSize:7,fill:'DBC8B2',align:'right'}),
+            cell(gm(g.stGain),{bold:true,fontSize:7,fill:'DBC8B2',align:'right',color:(g.stGain<0?C.red:'000000')}),
+            cell(String(byCls(g.cls).lots),{bold:true,fontSize:7,fill:'DBC8B2',align:'center'})
+          ];
+        };
+        /* the same grand total on every page, so a reader never has to page back.
+           These columns reconcile to the banners exactly: unreconciled holdings
+           are unclassified in summarise() and never enter a tax class. */
+        var grandRow=function(){
+          var go={bold:true,fontSize:7,fill:C.black,color:'FFFFFF'};
+          return [
+            cell('GRAND TOTAL'+(_sc?(' \u2014 '+_sc):'')+'  \u2014  '+T.positions.length+' holding'+(T.positions.length===1?'':'s'),
+                 {bold:true,fontSize:7,fill:C.black,color:'FFFFFF',align:'left'}),
+            cell('',go), cell('',go), cell('',go), cell('',go), cell('',go),
+            cell(U.m(t.ltcgCmv),{bold:true,fontSize:7,fill:C.black,color:'FFFFFF',align:'right'}),
+            cell(gm(t.ltcgGain),{bold:true,fontSize:7,fill:C.black,color:'FFFFFF',align:'right'}),
+            cell('',go),
+            cell(U.m(t.stcgCmv),{bold:true,fontSize:7,fill:C.black,color:'FFFFFF',align:'right'}),
+            cell(gm(t.stcgGain),{bold:true,fontSize:7,fill:C.black,color:'FFFFFF',align:'right'}),
+            cell(String(GLOTS),{bold:true,fontSize:7,fill:C.black,color:'FFFFFF',align:'center'})
+          ];
+        };
+        /* which class each flat entry belongs to, so a page break inside a
+           class can be detected rather than guessed */
+        var owner=[], cur=null;
+        flat.forEach(function(it,ix){ if(it.banner) cur=it.banner; owner[ix]=cur; });
         var pages=Math.ceil(flat.length/PER);
         for(var pg=0; pg<pages; pg++){
-          var slice=flat.slice(pg*PER,(pg+1)*PER);
+          var from=pg*PER, to=Math.min(flat.length,(pg+1)*PER);
+          var slice=flat.slice(from,to);
+          /* a class whose rows run past this page foot */
+          slice.forEach(function(it,ix){
+            it.tag=(it.banner && owner[to-1]===it.banner && to<flat.length && owner[to]===it.banner)
+              ? '(continues)' : '';
+          });
+          /* a page that opens mid-class repeats that class's banner */
+          var carry=(slice.length && !slice[0].banner && owner[from]) ? owner[from] : null;
           var sd=base("Taxation \u2014 Holding Detail"+_scopeTag+(pages>1?(' ('+(pg+1)+'/'+pages+')'):''));
           var rows=[head.map(function(h,i){ return cell(h,{bold:true,color:"FFFFFF",fill:C.black,fontSize:7,align:i?'center':'left'}); })];
+          if(carry) rows.push(bannerRow(carry,'(continued)'));
           slice.forEach(function(it){
-            if(it.banner){
-              var g=it.banner;
-              var b=[cell(g.cls+'  \u2014  '+g.n+' holding'+(g.n===1?'':'s'),{bold:true,fontSize:7,fill:'DBC8B2',align:'left'})];
-              for(var z=1;z<head.length;z++) b.push(cell('',{fill:'DBC8B2',fontSize:7}));
-              rows.push(b); return;
-            }
+            if(it.banner){ rows.push(bannerRow(it.banner,it.tag||'')); return; }
             var r=it.rec;
             rows.push([
               cell(r.name,{align:'left',fontSize:6.5}),
@@ -3606,10 +3653,15 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
               cell(String(r.lots),{align:'center',fontSize:7})
             ]);
           });
+          rows.push(grandRow());
           sd.addTable(rows,{x:0.18,y:TX_TOP,w:13.0,colW:colW,rowH:TX_ROW,fontFace:F,
             border:{type:'solid',pt:0.3,color:'D9D9D9'},valign:'middle'});
           foot(sd,'*\u201cAmt. available for Rebalancing\u201d is the holding\u2019s CMV apportioned across the lots open at each treatment; \u201cLots\u201d is how many separate purchases remain unsold. '+
-            'Holdings priced in rupees rather than units (PMS, unlisted AIF) show \u2014 in the unit columns.');
+            'Holdings priced in rupees rather than units (PMS, unlisted AIF) show \u2014 in the unit columns. '+
+            'Class and grand totals cover the money and lot columns only \u2014 units of different schemes are not additive, '+
+            'and a class total covers the whole class even where its holdings continue on another page. '+
+            'The grand total is for the whole '+(_sc?'client':'family')+', not this page'+(pages>1?(' (page '+(pg+1)+' of '+pages+')'):'')+'.'+
+            (T.unreconciled.length?(' '+T.unreconciled.length+' holding(s) with no lot history are unclassified and are not listed here.'):''));
         }
       })();
 
@@ -3646,8 +3698,9 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
 
         /* the positions a harvest would actually sell */
         if(H.candidates && H.candidates.length){
-          var CROW=0.28, CWORST=0.42, CTOP=1.30, CBOT=6.45;
-          var CPER=Math.max(6, Math.floor((CBOT-CTOP)/CWORST)-1);
+          var CROW=0.28, CWORST=0.34, CTOP=1.30, CBOT=6.72;
+          var CPER=Math.max(6, Math.floor((CBOT-CTOP)/CWORST)-2);   /* header + grand total */
+          var CT=H.candidates.reduce(function(a,c){ a.cmv+=c.cmv; a.lt+=c.ltLoss; a.st+=c.stLoss; return a; },{cmv:0,lt:0,st:0});
           var cpages=Math.ceil(H.candidates.length/CPER);
           for(var cp=0; cp<cpages; cp++){
             var cs=base("Tax Harvesting \u2014 Holdings at a Loss"+_scopeTag+(cpages>1?(' ('+(cp+1)+'/'+cpages+')'):''));
@@ -3664,9 +3717,19 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
                 cell(U.m(c.ltLoss+c.stLoss),{align:'right',fontSize:7.5,bold:true,color:C.red})
               ]);
             });
+            cr.push([
+              cell('GRAND TOTAL'+(_sc?(' \u2014 '+_sc):'')+'  \u2014  '+H.candidates.length+' holding'+(H.candidates.length===1?'':'s'),
+                   {bold:true,fontSize:7.5,fill:C.black,color:'FFFFFF',align:'left'}),
+              cell('',{fill:C.black}), cell('',{fill:C.black}),
+              cell(U.m(CT.cmv),{bold:true,fontSize:7.5,fill:C.black,color:'FFFFFF',align:'right'}),
+              cell(CT.lt>0?U.m(CT.lt):'\u2014',{bold:true,fontSize:7.5,fill:C.black,color:'FFFFFF',align:'right'}),
+              cell(CT.st>0?U.m(CT.st):'\u2014',{bold:true,fontSize:7.5,fill:C.black,color:'FFFFFF',align:'right'}),
+              cell(U.m(CT.lt+CT.st),{bold:true,fontSize:7.5,fill:C.black,color:'FFFFFF',align:'right'})
+            ]);
             cs.addTable(cr,{x:0.18,y:CTOP,w:13.0,colW:[3.55,1.55,2.35,1.45,1.40,1.40,1.30],rowH:CROW,fontFace:F,
               border:{type:'solid',pt:0.3,color:'D9D9D9'},valign:'middle'});
             foot(cs,'Largest loss first. A short-term loss may be set against both short- and long-term gains; a long-term loss only against long-term gains. '+
+              'The grand total covers every holding at a loss for the whole '+(_sc?'client':'family')+', not this page'+(cpages>1?(' (page '+(cp+1)+' of '+cpages+')'):'')+'. '+
               'Selling is a decision for the adviser \u2014 this slide lists what is available, not a recommendation.');
           }
         }
