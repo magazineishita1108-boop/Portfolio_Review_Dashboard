@@ -3408,6 +3408,73 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
     })();
 
     if(!only) (function(){ var d=(typeof DIVIDERS!=="undefined")?DIVIDERS.annexure:""; if(d){ var s=pptx.addSlide(); s.background={color:"FFFFFF"}; s.addImage({data:d,x:0,y:0,w:W,h:Hh,sizing:{type:"contain",w:W,h:Hh}}); stampLogo(s); } })();
+    /* ---- TAXATION (long/short split + harvesting) ---- */
+    if(SHOW('tax') && model.taxation && model.taxation.hasData) (function(){
+      var T=model.taxation, U=model.unit, t=T.totals;
+      var gm=function(v){ return (v==null||isNaN(v))?'\u2014':U.m(v); };
+      var rt=function(o){ return (!o)?'\u2014':(o.rate!=null?(o.rate*100).toFixed(o.rate*100%1?2:0)+'%':(o.label||'\u2014')); };
+      var asOn=(T.asOn instanceof Date)
+        ? (T.asOn.getUTCDate()+' '+["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"][T.asOn.getUTCMonth()]+' '+T.asOn.getUTCFullYear())
+        : model.meta.asOnDate;
+
+      var s=base("Taxation \u2014 Long Term vs Short Term");
+      var kx=0.18, kw=4.28, kg=0.14;
+      kpi(s,kx,1.06,kw,gm(t.ltcgGain),"LTCG Gain/Loss (on "+U.m(t.ltcgCmv)+" long term)");
+      kpi(s,kx+kw+kg,1.06,kw,gm(t.stcgGain),"STCG Gain/Loss (on "+U.m(t.stcgCmv)+" short term)");
+      kpi(s,kx+(kw+kg)*2,1.06,kw,gm(t.gl),"Total Gain/Loss (unclassified "+gm(t.unclassGain)+")");
+      var hdr=["Tax class","Long term after","LTCG rate","STCG rate","LTCG G/L","STCG G/L","Total G/L","CMV"];
+      var rows=[hdr.map(function(h,i){ return cell(h,{bold:true,color:"FFFFFF",fill:C.black,align:i?'center':'left'}); })];
+      T.byClass.slice(0,14).forEach(function(g){
+        rows.push([
+          cell(g.cls,{align:'left'}),
+          cell(g.rule?(g.rule.alwaysShort?'Always short term':(g.rule.anyPeriod?'Any period':'> '+g.rule.months+' months')):'\u2014',{align:'center'}),
+          cell(rt(g.rule&&g.rule.lt),{align:'center'}),
+          cell(rt(g.rule&&g.rule.st),{align:'center'}),
+          cell(gm(g.ltGain),{align:'right',color:(g.ltGain<0?C.red:'000000')}),
+          cell(gm(g.stGain),{align:'right',color:(g.stGain<0?C.red:'000000')}),
+          cell(gm(g.gl),{align:'right',color:(g.gl<0?C.red:'000000')}),
+          cell(U.m(g.cmv),{align:'right'})
+        ]);
+      });
+      s.addTable(rows,{x:0.18,y:1.94,w:13.0,colW:[3.10,1.75,1.15,1.15,1.45,1.45,1.45,1.50],rowH:0.30,
+        fontFace:F,border:{type:'solid',pt:0.3,color:'D9D9D9'},valign:'middle'});
+      foot(s,'*Holding periods measured to '+asOn+' from each lot\u2019s own purchase date, FIFO over '+T.txnCount+
+        ' transactions. LTCG + STCG add back to each holding\u2019s Gain/Loss. Rates stated as words depend on the assessee or the fund\u2019s own filing.'+
+        (T.unreconciled.length?(' '+T.unreconciled.length+' holding(s) could not be reconciled to the base file and are unclassified.'):''));
+
+      var H=T.harvest;
+      if(H && (H.ltLosses>1e-9 || H.stLosses>1e-9 || H.taxBefore>1e-9)){
+        var s2=base("Tax Harvesting");
+        kpi(s2,kx,1.06,kw,U.m(H.taxBefore),"Estimated tax before harvesting");
+        kpi(s2,kx+kw+kg,1.06,kw,U.m(H.taxAfter),"After setting off available losses");
+        kpi(s2,kx+(kw+kg)*2,1.06,kw,U.m(H.saving),"Estimated tax saved");
+        var h2=["Gain pool","Head","Rate","Gain","Loss set off","Taxable after","Tax after"];
+        var r2=[h2.map(function(h,i){ return cell(h,{bold:true,color:"FFFFFF",fill:C.black,align:i?'center':'left'}); })];
+        H.pools.slice().sort(function(a,b){ return b.gross-a.gross; }).slice(0,13).forEach(function(p){
+          var used=p.gross-p.left;
+          r2.push([
+            cell(p.cls,{align:'left'}),
+            cell(p.b==='LT'?'Long term':'Short term',{align:'center'}),
+            cell(p.rate!=null?((p.rate*100).toFixed(p.rate*100%1?2:0)+'%'):(p.label||'\u2014'),{align:'center'}),
+            cell(U.m(p.gross),{align:'right'}),
+            cell(used>1e-9?('-'+U.m(used)):'\u2014',{align:'right',color:(used>1e-9?C.green:'000000')}),
+            cell(U.m(p.left),{align:'right'}),
+            cell(p.rate!=null?U.m(p.left*p.rate):(p.label||'\u2014'),{align:'right'})
+          ]);
+        });
+        s2.addTable(r2,{x:0.18,y:1.94,w:13.0,colW:[3.40,1.50,1.50,1.75,1.85,1.50,1.50],rowH:0.30,
+          fontFace:F,border:{type:'solid',pt:0.3,color:'D9D9D9'},valign:'middle'});
+        var yNote=Math.min(6.25, 2.24+0.30*(r2.length));
+        s2.addText('Losses available: '+U.m(H.ltLosses)+' long term, '+U.m(H.stLosses)+' short term. '+
+          'A short-term loss may be set against both heads; a long-term loss only against long-term gains. Losses are applied to the highest-taxed gains first.'+
+          ((H.ltUnused>1e-9||H.stUnused>1e-9)?(' '+U.m(H.ltUnused+H.stUnused)+' cannot be absorbed this year and carries forward eight assessment years.'):'')+
+          (H.unquantifiedPools?(' '+H.unquantifiedPools+' pool(s) totalling '+U.m(H.unquantifiedGain)+' carry a word rate, so the tax shown is a floor.'):''),
+          {x:0.18,y:yNote,w:13.0,h:0.42,fontFace:F,fontSize:8.5,color:'5C3E17',valign:'top'});
+        foot(s2,'* Rate of 12.5% to be levied on long-term capital gains exceeding Rs. 1.25 lakh provided Securities Transaction Tax (\u2018STT\u2019) is paid on transfer of such units.   '+
+          '** Tax implication excludes cess & surcharge');
+      }
+    })();
+
     if(SHOW('perf')) window.filterPerfBuckets(model.performance.buckets).forEach(function(bk){
       var cols = bk.cols;
       var header = ["Scheme","Inception","AUM (Cr.)"].concat(cols);
@@ -4559,16 +4626,16 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
        Market Update            (divider + monthly slides, deck only)
        Portfolio Update         ips · asset · distalloc · clalloc · amc · obs
        Holdings & Analytics     holdings · analytics · overlap · cost · irr
-       Rebalancing Opportunities cvs · mfanalysis · rebal
+       Rebalancing Opportunities cvs · mfanalysis · tax · rebal
        Annexure                 perf
      'home' leads: it is the landing surface, not a slide. */
   var TAB_SECTIONS=[
     ['Portfolio Update',        ['ips','asset','distalloc','clalloc','amc','obs']],
     ['Portfolio Holdings & Analytics', ['holdings','analytics','overlap','cost','irr']],
-    ['Rebalancing Opportunities',['cvs','mfanalysis','rebal']],
+    ['Rebalancing Opportunities',['cvs','mfanalysis','tax','rebal']],
     ['Annexure',                ['perf']]
   ];
-  var TABS=[['home','Home'],['ips','IPS Profile'],['asset','Asset Allocation'],['distalloc','Distributor Allocation'],['clalloc','Client Allocation'],['amc','AMC Allocation'],['obs','Observations'],['holdings','Holdings'],['analytics','Analytics'],['overlap','Overlap'],['cost','Portfolio Cost'],['irr','Fund IRR'],['cvs','Current vs Sample'],['mfanalysis','MF Analysis'],['rebal','Portfolio Rebalancing'],['perf','Performance'],['tax','Taxation'],['disc','Disclaimer'],['thank','Thank You']];
+  var TABS=[['home','Home'],['ips','IPS Profile'],['asset','Asset Allocation'],['distalloc','Distributor Allocation'],['clalloc','Client Allocation'],['amc','AMC Allocation'],['obs','Observations'],['holdings','Holdings'],['analytics','Analytics'],['overlap','Overlap'],['cost','Portfolio Cost'],['irr','Fund IRR'],['cvs','Current vs Sample'],['mfanalysis','MF Analysis'],['tax','Taxation'],['rebal','Portfolio Rebalancing'],['perf','Performance'],['disc','Disclaimer'],['thank','Thank You']];
   /* section a tab belongs to, or null for home/disc/thank */
   /* Slide groups that are exported but are not tabs of their own — they live
      inside another tab's surface, so the picker scrolls to that surface. */
@@ -4596,7 +4663,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
   function slideRows(){
     var rows=[];
     TABS.forEach(function(t){
-      if(t[0]==='home'||t[0]==='tax') return;   /* Taxation is screen-only */
+      if(t[0]==='home') return;
       rows.push({k:t[0], l:t[1], to:t[0], sec:tabSection(t[0])});
       EXTRA_SLIDES.forEach(function(x){ if(x.after===t[0]) rows.push({k:x.k,l:x.l,to:x.to,sec:tabSection(t[0])}); });
       /* extras chained off other extras */
@@ -4623,7 +4690,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
   }
   function ensureDlBtns(){
     if(typeof TABS==='undefined') return;
-    TABS.forEach(function(t){ if(t[0]==='tax') return;   /* no taxation slide in the deck */
+    TABS.forEach(function(t){
       var s=document.getElementById('s-'+t[0]); if(s && !s.querySelector('.dlslide-bar')) s.insertAdjacentHTML('afterbegin', dlBar(t[0])); });
   }
   /* a section header reflects its children: on when all are on */
@@ -4649,6 +4716,7 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
     if(key==='clalloc') return !!(mdl.allocByClient && mdl.allocByClient.cols && mdl.allocByClient.cols.length);
     if(key==='irr') return !!(mdl.contribLag && (((mdl.contribLag.contributors||[]).length)||((mdl.contribLag.laggards||[]).length)));
     if(key==='rebal') return !!(mdl.holdings && mdl.holdings.length);
+    if(key==='tax') return !!(mdl.taxation && mdl.taxation.hasData);
     return true;
   }
   function slidePPTX(tabKey){
@@ -8384,8 +8452,8 @@ window.MF_ER_TABLE={"360 ONE Balanced Hybrid Fund(G)-Direct Plan":{"r":0.0062,"d
       };
     });
   }
-  /* the slide-download bar exists only for tabs the deck can export */
-  function dlBarSafe(){ return ''; }
+  /* Taxation exports like any other tab now, so it uses the standard bar. */
+  function dlBarSafe(){ try{ return dlBar('tax'); }catch(e){ return ''; } }
 
   function renderDisc(){
     var s=document.getElementById('s-disc'); if(!s) return;
