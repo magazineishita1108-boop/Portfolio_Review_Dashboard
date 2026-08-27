@@ -2314,7 +2314,9 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
     if(ALWAYS()) (function(){ var d=(typeof DIVIDERS!=="undefined")?DIVIDERS.market:""; if(d){ var s=pptx.addSlide(); s.background={color:"FFFFFF"}; s.addImage({data:d,x:0,y:0,w:W,h:Hh,sizing:{type:"contain",w:W,h:Hh}}); stampLogo(s); } })();
 
     /* ---- MARKET UPDATE (monthly; inserted before Asset Allocation) ---- */
-    if(ALWAYS()) (function(){ var imgs=(typeof MARKET_UPDATE_IMAGES!=="undefined"&&MARKET_UPDATE_IMAGES.length)?MARKET_UPDATE_IMAGES:[]; imgs.forEach(function(d){ if(!d)return; var s=pptx.addSlide(); s.background={color:"FFFFFF"}; s.addImage({data:d,x:0,y:0,w:W,h:Hh,sizing:{type:"contain",w:W,h:Hh}}); try{ var __lg=(typeof BRAND_LOGO!=="undefined"&&BRAND_LOGO)?BRAND_LOGO:""; if(__lg){ var __ar=__imgAR(__lg)||4.815, __h=0.42, __w=__h*__ar, __mw=2.2; if(__w>__mw){__w=__mw;__h=__w/__ar;} var __rx=13.15, __x=__rx-__w, __y=0.16; s.addShape(pptx.ShapeType.roundRect,{x:__x-0.13,y:__y-0.09,w:__w+0.26,h:__h+0.18,rectRadius:0.05,fill:{color:"000000"},line:{type:"none"}}); s.addImage({data:__lg,x:__x,y:__y,w:__w,h:__h}); } }catch(e){} }); })();
+    /* Market Update pages arrive as finished artwork with their own branding —
+       no logo is stamped on them, per the desk. */
+    if(ALWAYS()) (function(){ var imgs=(typeof MARKET_UPDATE_IMAGES!=="undefined"&&MARKET_UPDATE_IMAGES.length)?MARKET_UPDATE_IMAGES:[]; imgs.forEach(function(d){ if(!d)return; var s=pptx.addSlide(); s.background={color:"FFFFFF"}; s.addImage({data:d,x:0,y:0,w:W,h:Hh,sizing:{type:"contain",w:W,h:Hh}}); }); })();
 
     if(!only) (function(){ var d=(typeof DIVIDERS!=="undefined")?DIVIDERS.portfolio:""; if(d){ var s=pptx.addSlide(); s.background={color:"FFFFFF"}; s.addImage({data:d,x:0,y:0,w:W,h:Hh,sizing:{type:"contain",w:W,h:Hh}}); stampLogo(s); } })();
 
