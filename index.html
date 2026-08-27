@@ -3501,6 +3501,59 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
         ' transactions. LTCG + STCG add back to each holding\u2019s Gain/Loss. Rates stated as words depend on the assessee or the fund\u2019s own filing.'+
         (T.unreconciled.length?(' '+T.unreconciled.length+' holding(s) could not be reconciled to the base file and are unclassified.'):''));
 
+      /* ---- totals: by product, by asset class, and the grand total for the
+         selected scope. Same summarise() output the tab renders, so the deck
+         cannot disagree with the screen. ---- */
+      (function(){
+        var P=T.byProduct||[], A=T.byAsset||[];
+        if(!P.length && !A.length) return;
+        var st=base("Taxation — Totals"+_scopeTag);
+        var RH=0.28, WORST=0.34, TOP=1.16, GAP=0.34, GBOT=5.95;
+        /* leave room for the grand-total table (header + one row) and the gap */
+        var MAXR=Math.max(3, Math.floor((GBOT-GAP-2*WORST-TOP)/WORST)-1);
+        var cut=Math.max(P.length,A.length)>MAXR;
+        /* mirrors the 13.18 right edge every other table on the deck uses */
+        var half=6.30, x2=0.18+half+0.40;
+        var cw=[1.58,0.60,0.84,0.82,0.82,0.82,0.82];
+        var mk=function(title,arr,x){
+          var h=[title,"Holdings","CMV","LTCG G/L","STCG G/L","Unclass.","Total G/L"];
+          var rr=[h.map(function(v,i){ return cell(v,{bold:true,color:"FFFFFF",fill:C.black,fontSize:7,align:i?'center':'left'}); })];
+          arr.slice(0,MAXR).forEach(function(g){
+            rr.push([
+              cell(String(g.label||g.key),{align:'left',fontSize:7}),
+              cell(String(g.n),{align:'center',fontSize:7}),
+              cell(U.m(g.cmv),{align:'right',fontSize:7}),
+              cell(gm(g.ltGain),{align:'right',fontSize:7,color:(g.ltGain<0?C.red:'000000')}),
+              cell(gm(g.stGain),{align:'right',fontSize:7,color:(g.stGain<0?C.red:'000000')}),
+              cell(gm(g.unclassGain),{align:'right',fontSize:7,color:(g.unclassGain<0?C.red:'000000')}),
+              cell(gm(g.gl),{align:'right',fontSize:7,color:(g.gl<0?C.red:'000000')})
+            ]);
+          });
+          st.addTable(rr,{x:x,y:TOP,w:half,colW:cw,rowH:RH,fontFace:F,
+            border:{type:'solid',pt:0.3,color:'D9D9D9'},valign:'middle'});
+          return rr.length;
+        };
+        var n1=P.length?mk("Product",P,0.18):0;
+        var n2=A.length?mk("Asset class",A,x2):0;
+        var gy=TOP+Math.max(n1,n2)*WORST+GAP;
+        var nHold=T.positions.length+T.unreconciled.length+T.unmapped.length;
+        var gh=[(_sc?_sc:"Family")+" — grand total","Holdings","CMV","LTCG G/L","STCG G/L","Unclassified","Total G/L"];
+        var gr=[gh.map(function(v,i){ return cell(v,{bold:true,color:"FFFFFF",fill:C.black,align:i?'center':'left'}); }),
+          [ cell("All products, all asset classes",{align:'left',bold:true,fill:'DBC8B2'}),
+            cell(String(nHold),{align:'center',bold:true,fill:'DBC8B2'}),
+            cell(U.m(t.cmv),{align:'right',bold:true,fill:'DBC8B2'}),
+            cell(gm(t.ltcgGain),{align:'right',bold:true,fill:'DBC8B2',color:(t.ltcgGain<0?C.red:'000000')}),
+            cell(gm(t.stcgGain),{align:'right',bold:true,fill:'DBC8B2',color:(t.stcgGain<0?C.red:'000000')}),
+            cell(gm(t.unclassGain),{align:'right',bold:true,fill:'DBC8B2',color:(t.unclassGain<0?C.red:'000000')}),
+            cell(gm(t.gl),{align:'right',bold:true,fill:'DBC8B2',color:(t.gl<0?C.red:'000000')}) ]];
+        st.addTable(gr,{x:0.18,y:gy,w:13.0,colW:[4.30,1.20,1.60,1.55,1.55,1.55,1.25],rowH:0.30,fontFace:F,
+          border:{type:'solid',pt:0.3,color:'D9D9D9'},valign:'middle'});
+        foot(st,'*Product is the base file’s own Product column and asset class its own asset tag — neither is re-derived. '+
+          'Both roll-ups cover the same holdings, so each sums to the grand total. Unclassified is Gain/Loss on holdings that could not be '+
+          'reconciled to a lot history, carried at the total but not split.'+
+          (cut?(' Showing the largest '+MAXR+' of '+Math.max(P.length,A.length)+' rows by CMV; the grand total covers all of them.'):''));
+      })();
+
       /* ---- per-holding detail, grouped by tax class ----
          Rows per page are derived from the usable band and the row height, so
          a new class or holding re-paginates instead of overflowing. */
