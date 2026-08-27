@@ -3442,6 +3442,61 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
         ' transactions. LTCG + STCG add back to each holding\u2019s Gain/Loss. Rates stated as words depend on the assessee or the fund\u2019s own filing.'+
         (T.unreconciled.length?(' '+T.unreconciled.length+' holding(s) could not be reconciled to the base file and are unclassified.'):''));
 
+      /* ---- per-holding detail, grouped by tax class ----
+         Rows per page are derived from the usable band and the row height, so
+         a new class or holding re-paginates instead of overflowing. */
+      (function(){
+        var TX_ROW=0.30, TX_TOP=1.30, TX_BOT=6.86;
+        var PER=Math.max(6, Math.floor((TX_BOT-TX_TOP)/TX_ROW)-1);   /* -1 for the repeated header */
+        var head=["Holding","Units","First lot","Latest lot","LTCG units","Amt. avail. (LTCG)","LTCG G/L",
+                  "STCG units","Amt. avail. (STCG)","STCG G/L","Lots"];
+        var colW=[3.30,1.00,0.95,0.95,1.05,1.15,0.95,1.05,1.15,0.95,0.50];
+        var mon=["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+        var dt=function(d){ return (d instanceof Date)?(d.getUTCDate()+'-'+mon[d.getUTCMonth()]+'-'+String(d.getUTCFullYear()).slice(2)):'\u2014'; };
+        var un=function(v){ return (v==null||isNaN(v))?'\u2014':Number(v).toLocaleString('en-IN',{maximumFractionDigits:2}); };
+        /* flatten: a banner row per class, then its holdings */
+        var flat=[];
+        T.byClass.forEach(function(g){
+          var kids=T.positions.filter(function(r){ return r.cls===g.cls; });
+          if(!kids.length) return;
+          flat.push({banner:g});
+          kids.forEach(function(r){ flat.push({rec:r}); });
+        });
+        if(!flat.length) return;
+        var pages=Math.ceil(flat.length/PER);
+        for(var pg=0; pg<pages; pg++){
+          var slice=flat.slice(pg*PER,(pg+1)*PER);
+          var sd=base("Taxation \u2014 Holding Detail"+(pages>1?(' ('+(pg+1)+'/'+pages+')'):''));
+          var rows=[head.map(function(h,i){ return cell(h,{bold:true,color:"FFFFFF",fill:C.black,fontSize:7,align:i?'center':'left'}); })];
+          slice.forEach(function(it){
+            if(it.banner){
+              var g=it.banner;
+              var b=[cell(g.cls+'  \u2014  '+g.n+' holding'+(g.n===1?'':'s'),{bold:true,fontSize:7,fill:'DBC8B2',align:'left'})];
+              for(var z=1;z<head.length;z++) b.push(cell(z===head.length-1?'':'',{fill:'DBC8B2',fontSize:7}));
+              rows.push(b); return;
+            }
+            var r=it.rec;
+            rows.push([
+              cell(r.name+'\n'+r.client,{align:'left',fontSize:6.5}),
+              cell(r.amtMode?'\u2014':un(r.baseUnits),{align:'right',fontSize:7}),
+              cell(dt(r.oldest),{align:'center',fontSize:7}),
+              cell(dt(r.newest),{align:'center',fontSize:7}),
+              cell(r.amtMode?'\u2014':un(r.ltUnits),{align:'right',fontSize:7}),
+              cell(U.m(r.ltCmv),{align:'right',fontSize:7}),
+              cell(gm(r.ltGain),{align:'right',fontSize:7,color:(r.ltGain<0?C.red:'000000')}),
+              cell(r.amtMode?'\u2014':un(r.stUnits),{align:'right',fontSize:7}),
+              cell(U.m(r.stCmv),{align:'right',fontSize:7}),
+              cell(gm(r.stGain),{align:'right',fontSize:7,color:(r.stGain<0?C.red:'000000')}),
+              cell(String(r.lots),{align:'center',fontSize:7})
+            ]);
+          });
+          sd.addTable(rows,{x:0.18,y:TX_TOP,w:13.0,colW:colW,rowH:TX_ROW,fontFace:F,
+            border:{type:'solid',pt:0.3,color:'D9D9D9'},valign:'middle'});
+          foot(sd,'*\u201cAmt. available for Rebalancing\u201d is the holding\u2019s CMV apportioned across the lots open at each treatment; \u201cLots\u201d is how many separate purchases remain unsold. '+
+            'Holdings priced in rupees rather than units (PMS, unlisted AIF) show \u2014 in the unit columns.');
+        }
+      })();
+
       var H=T.harvest;
       if(H && (H.ltLosses>1e-9 || H.stLosses>1e-9 || H.taxBefore>1e-9)){
         var s2=base("Tax Harvesting");
@@ -3472,6 +3527,32 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
           {x:0.18,y:yNote,w:13.0,h:0.42,fontFace:F,fontSize:8.5,color:'5C3E17',valign:'top'});
         foot(s2,'* Rate of 12.5% to be levied on long-term capital gains exceeding Rs. 1.25 lakh provided Securities Transaction Tax (\u2018STT\u2019) is paid on transfer of such units.   '+
           '** Tax implication excludes cess & surcharge');
+
+        /* the positions a harvest would actually sell */
+        if(H.candidates && H.candidates.length){
+          var CROW=0.30, CTOP=1.30, CBOT=6.86;
+          var CPER=Math.max(6, Math.floor((CBOT-CTOP)/CROW)-1);
+          var cpages=Math.ceil(H.candidates.length/CPER);
+          for(var cp=0; cp<cpages; cp++){
+            var cs=base("Tax Harvesting \u2014 Holdings at a Loss"+(cpages>1?(' ('+(cp+1)+'/'+cpages+')'):''));
+            var ch=["Holding","Tax class","CMV","Long-term loss","Short-term loss","Total loss"];
+            var cr=[ch.map(function(h,i){ return cell(h,{bold:true,color:"FFFFFF",fill:C.black,fontSize:8,align:i?'center':'left'}); })];
+            H.candidates.slice(cp*CPER,(cp+1)*CPER).forEach(function(c){
+              cr.push([
+                cell(c.name+'\n'+c.client,{align:'left',fontSize:7}),
+                cell(c.cls,{align:'left',fontSize:7.5}),
+                cell(U.m(c.cmv),{align:'right',fontSize:7.5}),
+                cell(c.ltLoss>0?U.m(c.ltLoss):'\u2014',{align:'right',fontSize:7.5,color:(c.ltLoss>0?C.red:'000000')}),
+                cell(c.stLoss>0?U.m(c.stLoss):'\u2014',{align:'right',fontSize:7.5,color:(c.stLoss>0?C.red:'000000')}),
+                cell(U.m(c.ltLoss+c.stLoss),{align:'right',fontSize:7.5,bold:true,color:C.red})
+              ]);
+            });
+            cs.addTable(cr,{x:0.18,y:CTOP,w:13.0,colW:[4.30,2.90,1.60,1.45,1.45,1.30],rowH:CROW,fontFace:F,
+              border:{type:'solid',pt:0.3,color:'D9D9D9'},valign:'middle'});
+            foot(cs,'Largest loss first. A short-term loss may be set against both short- and long-term gains; a long-term loss only against long-term gains. '+
+              'Selling is a decision for the adviser \u2014 this slide lists what is available, not a recommendation.');
+          }
+        }
       }
     })();
 
