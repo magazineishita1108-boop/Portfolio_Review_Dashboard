@@ -1310,7 +1310,13 @@ var TOPIC_SLIDES={"holdings":"data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAB4AA
       for(j=0;j<amt.length;j++) d+= -yrs[j]*amt[j]/Math.pow(1+r,yrs[j]+1);
       if(d===0) break; var rn=r-f/d; if(rn<=-0.9999) rn=(-0.9999+r)/2; if(Math.abs(rn-r)<1e-9){ r=rn; break; } r=rn; }
       return Math.abs(npv(r))<1?r:null; }
-    for(i=0;i<200;i++){ var mid=(lo+hi)/2,fm=npv(mid); if(Math.abs(fm)<1e-6) return mid; if(flo*fm<0){hi=mid;fhi=fm;}else{lo=mid;flo=fm;} }
+    /* Converge on the WIDTH of the bracket, never on |npv| alone. A tiny |npv| is not a root:
+       when the earliest flow sits years before the rest (a Rs 0.001 folio-opening placeholder
+       dated 2006 in a 2023-26 book), every real flow discounts to ~0 at the very first midpoint
+       (49.5 = 4950%); the old |npv|<1e-6 exit accepted it and Debt / Grand Total XIRR and
+       BMXIRR showed 4950%. Signs are compared directly rather than via flo*fm, whose product
+       can underflow to 0 and send the search the wrong way. */
+    for(i=0;i<200;i++){ var mid=(lo+hi)/2,fm=npv(mid); if((flo<0)!==(fm<0)){hi=mid;fhi=fm;}else{lo=mid;flo=fm;} if(hi-lo<1e-12) break; }
     return (lo+hi)/2;
   }
   function computeIRRtree(parsed){
